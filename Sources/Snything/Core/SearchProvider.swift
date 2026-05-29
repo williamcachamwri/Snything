@@ -103,8 +103,28 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
 
             self.engine.search(query: query, maxResults: maxResults) { batch in
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
-                    self.results = batch
+
+                // Merge streaming batches instead of replacing
+                let existingIDs = Set(self.results.map(\.id))
+                let newResults = batch.filter { !existingIDs.contains($0.id) }
+
+                if !newResults.isEmpty || self.results.isEmpty {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        var merged = self.results
+                        merged.append(contentsOf: newResults)
+                        // Sort by relevance, deduplicate, cap
+                        let seen = Set(merged.map(\.id))
+                        var unique: [SearchResult] = []
+                        for r in merged.sorted(by: { $0.relevanceScore > $1.relevanceScore }) {
+                            if seen.contains(r.id), !unique.contains(where: { $0.id == r.id }) {
+                                unique.append(r)
+                            }
+                        }
+                        self.results = unique
+                        self.isSearching = false
+                    }
+                } else if !batch.isEmpty {
+                    // Batch had no new items but search finished
                     self.isSearching = false
                 }
             }
