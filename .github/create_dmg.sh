@@ -31,7 +31,7 @@ cp -R "$APP_BUNDLE" "$DMG_STAGING/"
 # Create Applications symlink
 ln -s /Applications "$DMG_STAGING/Applications"
 
-# Create DMG
+# Create compressed DMG
 hdiutil create \
     -volname "$APP_NAME" \
     -srcfolder "$DMG_STAGING" \
