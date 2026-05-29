@@ -52,10 +52,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     }
 
     func showClipboardHistory() {
+        // Always refresh items and switch to clipboard mode
         let items = clipboard.items
-        let currentIDs = clipboardItems.map(\.id)
-        let newIDs = items.map(\.id)
-        guard newIDs != currentIDs else { return }
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
             clipboardItems = items
             showingClipboard = true
@@ -65,6 +63,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             isSearching = false
             showPreview = false
             previewResult = nil
+            clipboardPreviewItem = nil
             results = []
         }
     }
