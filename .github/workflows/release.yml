@@ -29,7 +29,8 @@ jobs:
             TAG="${GITHUB_REF#refs/tags/}"
             VER="${TAG#v}"
           else
-            LATEST=$(gh release list --limit 30 --json tagName --jq '.[].tagName' 2>/dev/null | grep '^v1\.0\.' | head -1 || echo "")
+            # Get highest v1.0.x tag, numeric sort to avoid string ordering issues
+            LATEST=$(gh release list --limit 100 --json tagName --jq '.[].tagName' 2>/dev/null | grep '^v1\.0\.' | sort -t. -k3 -n | tail -1 || echo "")
             if [ -n "$LATEST" ]; then
               CURRENT=$(echo "$LATEST" | sed -E 's/^v1\.0\.([0-9]+)$/\1/')
               NEXT=$((CURRENT + 1))
