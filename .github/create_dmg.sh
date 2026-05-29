@@ -1,8 +1,13 @@
 #!/bin/bash
 set -e
 
+# This script lives in .github/ — resolve paths from repo root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
 APP_NAME="Snything"
-BUILD_DIR="$(cd "$(dirname "$0")" && pwd)/.build"
+BUILD_DIR="${PROJECT_ROOT}/.build"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 DMG_OUTPUT="${BUILD_DIR}/${APP_NAME}-Release.dmg"
 DMG_STAGING="/tmp/snything-dmg-staging"
@@ -16,7 +21,7 @@ mkdir -p "$DMG_STAGING"
 
 # Verify app exists
 if [ ! -d "$APP_BUNDLE" ]; then
-    echo "Error: ${APP_BUNDLE} not found. Run ./build_app.sh first."
+    echo "Error: ${APP_BUNDLE} not found. Run .github/build_app.sh first."
     exit 1
 fi
 

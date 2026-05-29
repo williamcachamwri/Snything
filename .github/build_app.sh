@@ -1,14 +1,18 @@
 #!/bin/bash
 set -e
 
+# This script lives in .github/ — resolve paths from repo root
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
+
 APP_NAME="Snything"
 BUNDLE_ID="com.snything.mac"
-BUILD_DIR="$(cd "$(dirname "$0")" && pwd)/.build"
+BUILD_DIR="${PROJECT_ROOT}/.build"
 RELEASE_BIN="${BUILD_DIR}/release/${APP_NAME}"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
 
 echo "Building release binary..."
-cd "$(dirname "$0")"
 swift build -c release
 
 echo "Creating .app bundle..."
@@ -62,7 +66,7 @@ fi
 
 echo "Signing app bundle..."
 codesign --force --deep --sign - \
-    --entitlements "$(dirname "$0")/Snything.entitlements" \
+    --entitlements "Snything.entitlements" \
     "${APP_BUNDLE}" 2>/dev/null || codesign --force --deep --sign - "${APP_BUNDLE}"
 
 echo "Done: ${APP_BUNDLE}"
