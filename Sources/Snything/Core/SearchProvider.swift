@@ -50,7 +50,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
 
         activeTask = Task { [weak self] in
             guard let self else { return }
-            await self.engine.search(query: query, maxResults: maxResults) { batch in
+            self.engine.search(query: query, maxResults: maxResults) { batch in
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.15)) {
                     self.results = batch

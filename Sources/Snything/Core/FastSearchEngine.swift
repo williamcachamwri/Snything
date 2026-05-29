@@ -1,15 +1,16 @@
 import Foundation
 import AppKit
+import os
 
 final class FastSearchEngine: @unchecked Sendable {
     static let shared = FastSearchEngine()
 
     private var currentTask: Task<Void, Never>?
     private var mdfindProcess: Process?
-    private let processLock = NSLock()
+    private let processLock = OSAllocatedUnfairLock<Void>(initialState: ())
 
     private let cache = NSCache<NSString, NSArray>()
-    private let cacheLock = NSLock()
+    private let cacheLock = OSAllocatedUnfairLock<Void>(initialState: ())
 
     private let excludedPaths: Set<String> = [
         "/System/Volumes",
@@ -92,10 +93,10 @@ final class FastSearchEngine: @unchecked Sendable {
 
     func cancel() {
         currentTask?.cancel()
-        processLock.lock()
-        mdfindProcess?.terminate()
-        mdfindProcess = nil
-        processLock.unlock()
+        processLock.withLock { _ in
+            mdfindProcess?.terminate()
+            mdfindProcess = nil
+        }
     }
 
     // MARK: - mdfind
@@ -109,14 +110,12 @@ final class FastSearchEngine: @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = Pipe()
 
-        processLock.lock()
-        mdfindProcess = process
-        processLock.unlock()
+        processLock.withLock { _ in mdfindProcess = process }
 
         defer {
-            processLock.lock()
-            if mdfindProcess === process { mdfindProcess = nil }
-            processLock.unlock()
+            processLock.withLock { _ in
+                if mdfindProcess === process { mdfindProcess = nil }
+            }
         }
 
         do { try process.run() } catch { return [] }
@@ -227,15 +226,15 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Cache
 
     private func cachedResults(for key: NSString) -> [SearchResult]? {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        return cache.object(forKey: key) as? [SearchResult]
+        cacheLock.withLock {
+            cache.object(forKey: key) as? [SearchResult]
+        }
     }
 
     private func setCache(key: NSString, results: [SearchResult]) {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        cache.setObject(results as NSArray, forKey: key)
+        cacheLock.withLock {
+            cache.setObject(results as NSArray, forKey: key)
+        }
     }
 }
 
