@@ -1,0 +1,110 @@
+import Foundation
+import SwiftUI
+import AppKit
+
+protocol SearchProvider: AnyObject, Sendable {
+    var name: String { get }
+    func search(query: String, maxResults: Int) async throws -> [SearchResult]
+    func cancel()
+}
+
+extension SearchProvider {
+    func normalizeScore(_ raw: Double, minimum: Double = 0, maximum: Double = 1) -> Double {
+        let clamped = Swift.max(minimum, Swift.min(raw, maximum))
+        return (clamped - minimum) / (maximum - minimum)
+    }
+}
+
+final class SearchCoordinator: ObservableObject, @unchecked Sendable {
+    @Published var results: [SearchResult] = []
+    @Published var isSearching: Bool = false
+    @Published var selectedIndex: Int = 0
+    @Published var showPreview: Bool = false
+    @Published var previewResult: SearchResult? = nil
+
+    private let engine = FastSearchEngine.shared
+    private var activeTask: Task<Void, Never>?
+
+    func performSearch(query: String) {
+        activeTask?.cancel()
+        engine.cancel()
+
+        guard query.count >= 1 else {
+            DispatchQueue.main.async { [weak self] in
+                self?.results = []
+                self?.isSearching = false
+                self?.selectedIndex = 0
+                self?.showPreview = false
+                self?.previewResult = nil
+            }
+            return
+        }
+
+        isSearching = true
+        selectedIndex = 0
+        showPreview = false
+        previewResult = nil
+
+        activeTask = Task { [weak self] in
+            guard let self else { return }
+            await self.engine.search(query: query, maxResults: 200) { batch in
+                guard !Task.isCancelled else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    self.results = batch
+                    self.isSearching = false
+                }
+            }
+        }
+    }
+
+    func cancel() {
+        activeTask?.cancel()
+        engine.cancel()
+        isSearching = false
+    }
+
+    func selectNext() {
+        guard !results.isEmpty else { return }
+        selectedIndex = (selectedIndex + 1) % results.count
+        updatePreview()
+    }
+
+    func selectPrevious() {
+        guard !results.isEmpty else { return }
+        selectedIndex = (selectedIndex - 1 + results.count) % results.count
+        updatePreview()
+    }
+
+    func openSelected() {
+        guard results.indices.contains(selectedIndex) else { return }
+        let result = results[selectedIndex]
+        NSWorkspace.shared.open(result.url)
+    }
+
+    func revealSelected() {
+        guard results.indices.contains(selectedIndex) else { return }
+        let result = results[selectedIndex]
+        NSWorkspace.shared.selectFile(result.url.path, inFileViewerRootedAtPath: "")
+    }
+
+    func togglePreview() {
+        guard results.indices.contains(selectedIndex) else { return }
+        let result = results[selectedIndex]
+        if showPreview && previewResult?.id == result.id {
+            withAnimation(.easeOut(duration: 0.15)) {
+                showPreview = false
+                previewResult = nil
+            }
+        } else {
+            withAnimation(.easeOut(duration: 0.15)) {
+                showPreview = true
+                previewResult = result
+            }
+        }
+    }
+
+    private func updatePreview() {
+        guard showPreview, results.indices.contains(selectedIndex) else { return }
+        previewResult = results[selectedIndex]
+    }
+}
