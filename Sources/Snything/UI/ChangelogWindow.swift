@@ -29,10 +29,10 @@ final class ChangelogWindowController: NSWindowController {
         panel.isReleasedWhenClosed = false
 
         let hosting = NSHostingView(rootView: ChangelogContainerView())
-        hosting.frame = NSRect(x: 0, y: 0, width: 480, height: 580)
+        hosting.frame = NSRect(x: 0, y: 0, width: 460, height: 540)
         hosting.autoresizingMask = [.width, .height]
         hosting.wantsLayer = true
-        hosting.layer?.cornerRadius = 24
+        hosting.layer?.cornerRadius = 16
         hosting.layer?.masksToBounds = true
         panel.contentView = hosting
 
@@ -171,18 +171,8 @@ struct ChangelogContainerView: View {
         ZStack {
             VisualEffectMaterialView()
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24)
-                        .stroke(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.white.opacity(0.22),
-                                    Color.white.opacity(0.05)
-                                ]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
             ChangelogView()
         }

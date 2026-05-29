@@ -2,8 +2,6 @@ import SwiftUI
 
 struct ChangelogView: View {
     @StateObject private var updateManager = UpdateManager.shared
-    @State private var isHoveringInstall = false
-    @State private var isHoveringSkip = false
     @State private var appearPhase = 0
 
     var body: some View {
@@ -54,56 +52,22 @@ struct ChangelogView: View {
     }
 
     private var headerSection: some View {
-        VStack(spacing: 14) {
-            // Animated icon
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.accentColor.opacity(0.15), .cyan.opacity(0.08)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 68, height: 68)
+        VStack(spacing: 10) {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(.system(size: 32))
+                .foregroundColor(.accentColor)
+                .offset(y: appearPhase == 0 ? 10 : 0)
+                .opacity(appearPhase == 0 ? 0 : 1)
+                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: appearPhase)
 
-                Circle()
-                    .stroke(
-                        LinearGradient(
-                            colors: [.accentColor.opacity(0.3), .cyan.opacity(0.15)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.5
-                    )
-                    .frame(width: 68, height: 68)
-
-                Image(systemName: "arrow.down.app.fill")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.accentColor, .cyan],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-            }
-            .offset(y: appearPhase == 0 ? 10 : 0)
-            .opacity(appearPhase == 0 ? 0 : 1)
-            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: appearPhase)
-
-            VStack(spacing: 6) {
-                Text("New Update Available")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+            VStack(spacing: 4) {
+                Text("Update Available")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
 
-                HStack(spacing: 8) {
-                    versionBadge
-
-                    Text("is ready to install")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(.secondary)
-                }
+                Text("Version \(updateManager.alertVersion)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
             }
             .offset(y: appearPhase == 0 ? 8 : 0)
             .opacity(appearPhase == 0 ? 0 : 1)
@@ -112,88 +76,33 @@ struct ChangelogView: View {
         .onAppear { appearPhase = 1 }
     }
 
-    private var versionBadge: some View {
-        Text("v\(updateManager.alertVersion)")
-            .font(.system(size: 12, weight: .bold, design: .rounded))
-            .foregroundColor(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.accentColor, .accentColor.opacity(0.8)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
-            )
-    }
-
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            // Skip button
+        HStack(spacing: 10) {
             Button {
                 ChangelogWindowController.shared.dismissAnimated()
             } label: {
                 Text("Later")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(isHoveringSkip ? .primary : .secondary)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(isHoveringSkip ? Color.secondary.opacity(0.12) : Color.secondary.opacity(0.06))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.white.opacity(isHoveringSkip ? 0.12 : 0.06), lineWidth: 1)
-                            )
-                    )
+                    .padding(.vertical, 10)
             }
             .buttonStyle(.plain)
-            .onHover { isHoveringSkip = $0 }
 
-            // Install button with shimmer effect
             Button {
                 updateManager.installUpdate()
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Install Update")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.accentColor, .accentColor.opacity(0.85)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                        )
-                )
-                .shadow(
-                    color: .accentColor.opacity(isHoveringInstall ? 0.4 : 0.2),
-                    radius: isHoveringInstall ? 12 : 8,
-                    x: 0,
-                    y: isHoveringInstall ? 4 : 2
-                )
+                Text("Install Update")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.accentColor)
+                    )
             }
             .buttonStyle(.plain)
-            .onHover { isHoveringInstall = $0 }
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isHoveringInstall)
         }
     }
 }
@@ -216,62 +125,60 @@ struct ChangelogMarkdownView: View {
             switch block.type {
             case .heading:
                 Text(block.content)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                    .padding(.top, 4)
+                    .padding(.top, 2)
 
             case .subheading:
                 Text(block.content)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.accentColor)
-                    .padding(.top, 2)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary.opacity(0.7))
+                    .padding(.top, 1)
 
             case .bullet:
                 HStack(alignment: .top, spacing: 8) {
-                    Circle()
-                        .fill(Color.accentColor.opacity(0.6))
-                        .frame(width: 6, height: 6)
-                        .padding(.top, 6)
+                    Text("\u{2022}")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.secondary)
 
                     Text(block.content)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundColor(.secondary)
-                        .lineSpacing(3)
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
             case .numbered:
                 HStack(alignment: .top, spacing: 8) {
                     Text("\(block.number).")
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .foregroundColor(.accentColor)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary)
                         .frame(width: 18, alignment: .trailing)
-                        .padding(.top, 1)
 
                     Text(block.content)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundColor(.secondary)
-                        .lineSpacing(3)
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
             case .code:
                 Text(block.content)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .foregroundColor(.primary.opacity(0.85))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundColor(.primary.opacity(0.8))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.secondary.opacity(0.08))
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(Color.secondary.opacity(0.06))
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
 
             case .paragraph:
                 Text(block.content)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
                     .foregroundColor(.secondary)
-                    .lineSpacing(3)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
