@@ -3,8 +3,6 @@ import SwiftUI
 struct SplashView: View {
     @State private var iconScale: CGFloat = 0.3
     @State private var iconOpacity: Double = 0
-    @State private var ringTrim: CGFloat = 0
-    @State private var ringRotation: Double = -90
     @State private var textOpacity: Double = 0
     @State private var textOffset: CGFloat = 28
     @State private var orbScale: CGFloat = 0.6
@@ -34,52 +32,35 @@ struct SplashView: View {
 
             VStack(spacing: 36) {
                 ZStack {
-                    // Animated orb glow
+                    // Soft orb glow behind logo
                     Circle()
                         .fill(
                             AngularGradient(
                                 gradient: Gradient(colors: [
-                                    Color.accentColor.opacity(0.20),
-                                    Color.pink.opacity(0.12),
-                                    Color.cyan.opacity(0.14),
-                                    Color.accentColor.opacity(0.20)
+                                    Color.accentColor.opacity(0.18),
+                                    Color.cyan.opacity(0.10),
+                                    Color.pink.opacity(0.08),
+                                    Color.accentColor.opacity(0.18)
                                 ]),
                                 center: .center
                             )
                         )
-                        .frame(width: 120, height: 120)
+                        .frame(width: 130, height: 130)
                         .scaleEffect(orbScale)
                         .opacity(orbOpacity)
-                        .blur(radius: 18)
-
-                    // Rotating ring
-                    Circle()
-                        .trim(from: 0, to: ringTrim)
-                        .stroke(
-                            AngularGradient(
-                                gradient: Gradient(colors: [
-                                    .accentColor,
-                                    .pink,
-                                    .cyan,
-                                    .accentColor
-                                ]),
-                                center: .center
-                            ),
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                        )
-                        .frame(width: 90, height: 90)
-                        .rotationEffect(.degrees(ringRotation))
+                        .blur(radius: 24)
 
                     // Custom App Icon Logo
                     if let icon = Bundle.module.image(forResource: "AppIcon") {
                         Image(nsImage: icon)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: 64, height: 64)
-                            .shadow(color: .accentColor.opacity(0.35), radius: 14, x: 0, y: 5)
+                            .frame(width: 72, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
                     } else {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .font(.system(size: 38, weight: .bold, design: .rounded))
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: [.accentColor, .cyan],
@@ -128,14 +109,8 @@ struct SplashView: View {
                 iconOpacity = 1.0
             }
 
-            // Ring spins and completes
-            withAnimation(.easeOut(duration: 0.7).delay(0.2)) {
-                ringTrim = 1.0
-                ringRotation = 270
-            }
-
             // Text slides up
-            withAnimation(.easeOut(duration: 0.55).delay(0.4)) {
+            withAnimation(.easeOut(duration: 0.55).delay(0.3)) {
                 textOpacity = 1.0
                 textOffset = 0
             }

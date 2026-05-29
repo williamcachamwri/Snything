@@ -552,6 +552,8 @@ struct AppLogoImage: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+                .shadow(color: .black.opacity(0.20), radius: 10, x: 0, y: 4)
         } else {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: size * 0.55, weight: .bold, design: .rounded))
