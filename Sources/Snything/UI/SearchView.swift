@@ -6,7 +6,7 @@ struct SearchView: View {
     @State private var debounceTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
     @Namespace private var animationNamespace
-    @State private var clipboardTimer: Timer?
+    @State private var recentsTimer: Timer?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,20 +30,20 @@ struct SearchView: View {
         .onAppear {
             isSearchFocused = true
             setupKeyboardMonitor()
-            coordinator.showClipboardHistory()
-            startClipboardTimer()
+            coordinator.showRecents()
+            startRecentsTimer()
         }
         .onDisappear {
             coordinator.cancel()
             KeyboardManager.shared.stopMonitoring()
             KeyboardManager.shared.onKeyDown = nil
-            stopClipboardTimer()
+            stopRecentsTimer()
         }
         .onChange(of: query) { _, newValue in
             if newValue.isEmpty {
-                startClipboardTimer()
+                startRecentsTimer()
             } else {
-                stopClipboardTimer()
+                stopRecentsTimer()
             }
         }
         .background(Color.clear)
@@ -57,64 +57,105 @@ struct SearchView: View {
                 onQueryChange: handleQueryChange
             )
             .focused($isSearchFocused)
-            .padding(.bottom, 12)
+            .padding(.bottom, 8)
 
-            if coordinator.showingClipboard && coordinator.clipboardItems.isEmpty {
+            // Tab switcher: Files vs Clipboard
+            HStack(spacing: 8) {
+                TabButton(
+                    title: "Files",
+                    icon: "magnifyingglass",
+                    isActive: !coordinator.showingClipboard
+                ) {
+                    if coordinator.showingClipboard {
+                        query = ""
+                        coordinator.showRecents()
+                    }
+                }
+                TabButton(
+                    title: "Clipboard",
+                    icon: "doc.on.clipboard",
+                    isActive: coordinator.showingClipboard
+                ) {
+                    if !coordinator.showingClipboard {
+                        query = ""
+                        coordinator.showClipboardHistory()
+                    }
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+            .padding(.bottom, 8)
+
+            if coordinator.showingRecents && coordinator.results.isEmpty {
+                noRecentsState
+            } else if coordinator.showingClipboard && coordinator.clipboardItems.isEmpty {
                 noClipboardState
             } else if coordinator.isSearching && coordinator.results.isEmpty {
                 searchingIndicator
-            } else if !coordinator.showingClipboard && coordinator.results.isEmpty && !query.isEmpty {
+            } else if !coordinator.showingRecents && !coordinator.showingClipboard && coordinator.results.isEmpty && !query.isEmpty {
                 emptyState
             } else if coordinator.showingClipboard {
                 VStack(spacing: 0) {
+                    clipboardHeader
+                    ClipboardListView(coordinator: coordinator, namespace: animationNamespace)
+                }
+            } else if coordinator.showingRecents {
+                VStack(spacing: 0) {
                     HStack {
-                        Image(systemName: "doc.on.clipboard")
+                        Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary.opacity(0.7))
-                        Text("Clipboard History")
+                        Text("Recent Files")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary.opacity(0.7))
                         Spacer()
-                        if !coordinator.clipboardItems.isEmpty {
-                            Button(action: {
-                                ClipboardManager.shared.clearAll()
-                                coordinator.showClipboardHistory()
-                            }) {
-                                Text("Clear")
-                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                    .foregroundColor(.secondary.opacity(0.6))
-                            }
-                            .buttonStyle(PlainButtonStyle())
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .fill(Color.secondary.opacity(0.08))
-                            )
-                        }
                     }
                     .padding(.horizontal, 4)
                     .padding(.bottom, 6)
-
-                    ClipboardListView(coordinator: coordinator, namespace: animationNamespace)
-                }
-            } else {
-                VStack(spacing: 0) {
-                    if coordinator.results.isEmpty && query.isEmpty {
-                        // Should be showing clipboard, but handled above
-                        EmptyView()
-                    }
                     ResultListView(coordinator: coordinator, namespace: animationNamespace)
                 }
+            } else {
+                ResultListView(coordinator: coordinator, namespace: animationNamespace)
             }
         }
         .padding(20)
     }
 
+    private var clipboardHeader: some View {
+        HStack {
+            Image(systemName: "doc.on.clipboard")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.secondary.opacity(0.7))
+            Text("Clipboard History")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.7))
+            Spacer()
+            if !coordinator.clipboardItems.isEmpty {
+                Button(action: {
+                    ClipboardManager.shared.clearAll()
+                    coordinator.showClipboardHistory()
+                }) {
+                    Text("Clear")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
+                .buttonStyle(PlainButtonStyle())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.secondary.opacity(0.08))
+                )
+            }
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 6)
+    }
+
     private func handleQueryChange(_ newValue: String) {
         debounceTask?.cancel()
         if newValue.isEmpty {
-            coordinator.showClipboardHistory()
+            coordinator.showRecents()
             return
         }
         debounceTask = Task {
@@ -187,17 +228,64 @@ struct SearchView: View {
         }
     }
 
-    private func startClipboardTimer() {
-        clipboardTimer?.invalidate()
-        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            guard coordinator.showingClipboard else { return }
-            coordinator.showClipboardHistory()
+    private func startRecentsTimer() {
+        recentsTimer?.invalidate()
+        recentsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            guard coordinator.showingRecents else { return }
+            coordinator.showRecents()
         }
     }
 
-    private func stopClipboardTimer() {
-        clipboardTimer?.invalidate()
-        clipboardTimer = nil
+    private func stopRecentsTimer() {
+        recentsTimer?.invalidate()
+        recentsTimer = nil
+    }
+
+    private struct TabButton: View {
+        let title: String
+        let icon: String
+        let isActive: Bool
+        let action: () -> Void
+
+        var body: some View {
+            Button(action: action) {
+                HStack(spacing: 4) {
+                    Image(systemName: icon)
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(title)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(isActive ? .primary : .secondary.opacity(0.7))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isActive ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(isActive ? Color.accentColor.opacity(0.3) : Color.clear, lineWidth: 1)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    @ViewBuilder
+    private var noRecentsState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "clock")
+                .font(.system(size: 32, weight: .light))
+                .foregroundColor(.secondary.opacity(0.6))
+            Text("No recent files")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+            Text("Open or search for files to see them here")
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.7))
+        }
+        .frame(maxHeight: .infinity)
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
     }
 
     @ViewBuilder
