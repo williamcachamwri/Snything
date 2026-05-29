@@ -16,18 +16,15 @@ struct ResultListView: View {
                         )
                         .id(result.id)
                         .contentShape(Rectangle())
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.96)).combined(with: .offset(y: 8)),
+                            removal: .opacity.combined(with: .scale(scale: 0.96))
+                        ))
                         .onTapGesture {
                             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                                 coordinator.selectedIndex = index
                             }
                             coordinator.openSelected()
-                        }
-                        .onHover { hover in
-                            if hover {
-                                withAnimation(.spring(response: 0.15, dampingFraction: 0.9)) {
-                                    coordinator.selectedIndex = index
-                                }
-                            }
                         }
                     }
                 }
