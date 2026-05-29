@@ -27,9 +27,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
 
-        // Start background file indexing immediately
-        FileIndex.shared.ensureIndexed()
-
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleHideSearch),
