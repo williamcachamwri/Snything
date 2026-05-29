@@ -387,6 +387,7 @@ struct TreeNodeView: View {
                 NSPasteboard.general.setString(node.url.path, forType: .string)
             }
         }
+        .id(node.url)
     }
 
     private func iconForFile(_ url: URL) -> String {
@@ -697,16 +698,25 @@ struct FileContextPreviewView: View {
                 }
                 Spacer()
             } else {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(tree!.children) { child in
-                            TreeNodeView(node: child, depth: 0, selectedURL: $selectedURL, onOpen: { targetURL in
-                                NSWorkspace.shared.open(targetURL)
-                            })
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(tree!.children) { child in
+                                TreeNodeView(node: child, depth: 0, selectedURL: $selectedURL, onOpen: { targetURL in
+                                    NSWorkspace.shared.open(targetURL)
+                                })
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                    }
+                    .onChange(of: selectedURL) { _, newURL in
+                        if let newURL {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                proxy.scrollTo(newURL, anchor: .center)
+                            }
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
                 }
             }
         }
