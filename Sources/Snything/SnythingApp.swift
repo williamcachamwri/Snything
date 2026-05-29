@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ServiceManagement
 
 @main
 struct SnythingApp: App {
@@ -14,12 +15,15 @@ struct SnythingApp: App {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: NSWindow?
+    private var onboardingBackdrop: NSWindow?
     private var searchWindowController: SearchWindowController?
     private var settingsWindow: NSWindow?
     private var statusItem: NSStatusItem?
+    private var outsideClickMonitor: Any?
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Start hidden until onboarding decides
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
 
@@ -32,8 +36,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let hasCompleted = UserDefaults.standard.bool(forKey: hasCompletedOnboardingKey)
         if hasCompleted {
+            hideDockIcon()
             showSplashThenMain()
         } else {
+            showDockIcon()
             showOnboarding()
         }
     }
@@ -49,6 +55,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    func applicationDidResignActive(_ notification: Notification) {
+        // Clicking outside the app (desktop, other app) during onboarding dismisses it
+        if onboardingWindow != nil {
+            dismissOnboardingProceedToSplash()
+        }
+    }
+
+    // MARK: - Dock Icon
+
+    private func showDockIcon() {
+        NSApp.setActivationPolicy(.regular)
+    }
+
+    private func hideDockIcon() {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    // MARK: - Search Window
+
     @objc private func handleHideSearch() {
         searchWindowController?.hideWindow()
     }
@@ -57,13 +82,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         searchWindowController?.toggleVisibility()
     }
 
+    // MARK: - Onboarding
+
     @objc private func resetOnboarding() {
         UserDefaults.standard.set(false, forKey: hasCompletedOnboardingKey)
         searchWindowController?.hideWindow()
         searchWindowController = nil
         GlobalHotkeyManager.shared.unregister()
+        showDockIcon()
         showOnboarding()
     }
+
+    private func showOnboarding() {
+        let window = createHostingWindow(
+            rootView: OnboardingContainerView {
+                self.dismissOnboardingProceedToSplash()
+            },
+            size: NSSize(width: 520, height: 440)
+        )
+        self.onboardingWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Click outside dismisses onboarding
+        startOutsideClickMonitor()
+    }
+
+    private func dismissOnboardingProceedToSplash() {
+        UserDefaults.standard.set(true, forKey: hasCompletedOnboardingKey)
+        closeOnboardingWindow()
+        hideDockIcon()
+        showSplashThenMain()
+    }
+
+    private func closeOnboardingWindow() {
+        stopOutsideClickMonitor()
+        onboardingBackdrop?.orderOut(nil)
+        onboardingBackdrop = nil
+        onboardingWindow?.orderOut(nil)
+        onboardingWindow = nil
+    }
+
+    // MARK: - Click Outside Monitor
+
+    private func startOutsideClickMonitor() {
+        // Monitor clicks within our app that land outside the onboarding window
+        outsideClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self = self, let window = self.onboardingWindow else { return event }
+            if event.window !== window {
+                self.dismissOnboardingProceedToSplash()
+            }
+            return event
+        }
+    }
+
+    private func stopOutsideClickMonitor() {
+        if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickMonitor = nil
+        }
+    }
+
+    // MARK: - Splash
+
+    private func showSplashThenMain() {
+        let splashWindow = createHostingWindow(
+            rootView: SplashView {
+                self.closeOnboardingWindow()
+                self.setupSearchWindow()
+            },
+            size: NSSize(width: 420, height: 320)
+        )
+        self.onboardingWindow = splashWindow
+        splashWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: - Settings
 
     @objc private func showSettings() {
         if let existing = settingsWindow {
@@ -83,6 +178,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quitApp() {
         NSApp.terminate(nil)
     }
+
+    // MARK: - Menu Bar
 
     private func setupMenuBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -117,32 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = menu
     }
 
-    private func showSplashThenMain() {
-        let splashWindow = createHostingWindow(
-            rootView: SplashView {
-                self.closeOnboardingWindow()
-                self.setupSearchWindow()
-            },
-            size: NSSize(width: 420, height: 320)
-        )
-        self.onboardingWindow = splashWindow
-        splashWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    private func showOnboarding() {
-        let window = createHostingWindow(
-            rootView: OnboardingContainerView {
-                UserDefaults.standard.set(true, forKey: self.hasCompletedOnboardingKey)
-                self.closeOnboardingWindow()
-                self.showSplashThenMain()
-            },
-            size: NSSize(width: 520, height: 440)
-        )
-        self.onboardingWindow = window
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
+    // MARK: - Search Window
 
     private func setupSearchWindow() {
         searchWindowController = SearchWindowController()
@@ -153,10 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func closeOnboardingWindow() {
-        onboardingWindow?.orderOut(nil)
-        onboardingWindow = nil
-    }
+    // MARK: - Window Factory
 
     private func createHostingWindow<Content: View>(
         rootView: Content,
@@ -182,6 +251,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.contentView = hostingView
 
         return panel
+    }
+}
+
+// MARK: - Launch at Login Manager
+
+final class LaunchAtLoginManager: ObservableObject {
+    static let shared = LaunchAtLoginManager()
+
+    @Published var isEnabled: Bool {
+        didSet {
+            if isEnabled {
+                try? SMAppService.mainApp.register()
+            } else {
+                try? SMAppService.mainApp.unregister()
+            }
+        }
+    }
+
+    private init() {
+        isEnabled = SMAppService.mainApp.status == .enabled
     }
 }
 
