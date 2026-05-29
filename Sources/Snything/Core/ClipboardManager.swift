@@ -66,12 +66,19 @@ final class ClipboardManager {
     // MARK: - Capture
 
     private func captureItem() -> ClipboardItem? {
+        // Capture source app from background queue — safe, won't block UI
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let appName = frontmost?.localizedName ?? "Unknown"
+        let bundleID = frontmost?.bundleIdentifier ?? ""
+
         if let filePaths = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            let first = filePaths.first {
             return ClipboardItem(
                 id: UUID().uuidString,
                 content: first.path,
                 type: .file,
+                sourceAppName: appName,
+                sourceBundleID: bundleID,
                 timestamp: Date(),
                 characterCount: first.path.count
             )
@@ -84,6 +91,8 @@ final class ClipboardManager {
                     id: UUID().uuidString,
                     content: string,
                     type: .url,
+                    sourceAppName: appName,
+                    sourceBundleID: bundleID,
                     timestamp: Date(),
                     characterCount: string.count
                 )
@@ -92,6 +101,8 @@ final class ClipboardManager {
                 id: UUID().uuidString,
                 content: string,
                 type: .text,
+                sourceAppName: appName,
+                sourceBundleID: bundleID,
                 timestamp: Date(),
                 characterCount: string.count
             )
@@ -105,6 +116,8 @@ final class ClipboardManager {
                     id: UUID().uuidString,
                     content: plain,
                     type: .rtf,
+                    sourceAppName: appName,
+                    sourceBundleID: bundleID,
                     timestamp: Date(),
                     characterCount: plain.count
                 )
@@ -118,6 +131,8 @@ final class ClipboardManager {
                 id: UUID().uuidString,
                 content: "Image",
                 type: .image,
+                sourceAppName: appName,
+                sourceBundleID: bundleID,
                 timestamp: Date(),
                 characterCount: px
             )
