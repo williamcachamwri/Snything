@@ -191,8 +191,8 @@ struct WelcomeStepView: View {
             ZStack {
                 GradientOrbView()
 
-                AppLogoImage(size: 64)
-                    .shadow(color: .accentColor.opacity(0.3), radius: 14, x: 0, y: 5)
+                AppLogoImage(size: 80)
+                    .shadow(color: .accentColor.opacity(0.25), radius: 16, x: 0, y: 6)
             }
             .scaleEffect(scale)
             .opacity(opacity)
@@ -367,8 +367,8 @@ struct CompletionStepView: View {
             ZStack {
                 GradientOrbView()
 
-                AppLogoImage(size: 64)
-                    .shadow(color: .accentColor.opacity(0.35), radius: 14, x: 0, y: 5)
+                AppLogoImage(size: 80)
+                    .shadow(color: .accentColor.opacity(0.30), radius: 16, x: 0, y: 6)
                     .scaleEffect(glowScale)
             }
             .scaleEffect(scale)
@@ -552,8 +552,9 @@ struct AppLogoImage: View {
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
-                .shadow(color: .black.opacity(0.20), radius: 10, x: 0, y: 4)
+                .compositingGroup()
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+                .shadow(color: .black.opacity(0.22), radius: size * 0.15, x: 0, y: size * 0.06)
         } else {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: size * 0.55, weight: .bold, design: .rounded))
