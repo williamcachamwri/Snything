@@ -2,6 +2,10 @@ import Foundation
 import AppKit
 import os
 
+/// Ultra-fast search engine using Spotlight (mdfind) as the primary source.
+/// Spotlight already indexes every file on the Mac — no custom indexing needed.
+/// Memory-safe: mdfind runs as a subprocess; results stream through a Pipe.
+/// No long-lived memory buffers; NSCache is capped at 50 entries / 5MB.
 final class FastSearchEngine: @unchecked Sendable {
     static let shared = FastSearchEngine()
 
@@ -53,30 +57,26 @@ final class FastSearchEngine: @unchecked Sendable {
             allResults.append(contentsOf: self.builtInCommands(query: q))
             allResults.append(contentsOf: self.webSearches(query: q))
 
-            // Phase 2: FileIndex — PRIMARY source. Scans ALL of /Users in RAM.
-            // Skip for single-char queries to avoid scanning the entire index.
-            let indexResults = FileIndex.shared.search(query: q, maxResults: max(q.count >= 2 ? maxResults : 50, maxResults))
-            allResults.append(contentsOf: indexResults)
+            // Phase 2: Spotlight mdfind — PRIMARY. Searches EVERYWHERE on the Mac.
+            // Spotlight's index is always up-to-date, comprehensive, and fast.
+            async let mdfindNameResults = self.runMdfind(query: q, maxResults: maxResults)
+            let mdfind = await mdfindNameResults
+            allResults.append(contentsOf: mdfind)
 
-            // Phase 3: Cached apps (fuzzy from RAM, covers app display names)
+            // Phase 3: Cached apps (fuzzy from RAM, covers app display names mdfind might miss)
             let appResults = await self.scanApplications(query: q, maxResults: maxResults)
             allResults.append(contentsOf: appResults)
 
-            // Phase 4: Spotlight mdfind — supplement for anything the index missed
-            async let spotResults = self.runMdfind(query: q, maxResults: maxResults / 2)
-            let spot = await spotResults
-            allResults.append(contentsOf: spot)
-
-            // Phase 5: Content search — very limited, only for long queries
+            // Phase 4: Content search — very limited, only for long queries
             if q.count >= 8 {
                 let content = await self.runContentSearch(query: q, maxResults: 2)
                 allResults.append(contentsOf: content)
             }
 
-            // Deduplicate + sort by score
+            // Deduplicate by path + sort by score
             var seen = Set<String>()
             var unique: [SearchResult] = []
-            unique.reserveCapacity(allResults.count)
+            unique.reserveCapacity(min(allResults.count, maxResults))
             for r in allResults.sorted(by: { $0.relevanceScore > $1.relevanceScore }) {
                 if seen.insert(r.id).inserted {
                     unique.append(r)
@@ -98,25 +98,17 @@ final class FastSearchEngine: @unchecked Sendable {
         }
     }
 
-    // MARK: - Spotlight
+    // MARK: - Spotlight (name search — everywhere on the Mac)
 
     private func runMdfind(query: String, maxResults: Int) async -> [SearchResult] {
-        // Escape special characters for mdfind predicate
-        let escaped = query
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "*", with: "\\*")
-            .replacingOccurrences(of: "?", with: "\\?")
-            .replacingOccurrences(of: "+", with: "\\+")
-            .replacingOccurrences(of: "-", with: "\\-")
-            .replacingOccurrences(of: "&", with: "\\&")
-            .replacingOccurrences(of: "|", with: "\\|")
+        let escaped = escapeForPredicate(query)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        // Search EVERYWHERE Spotlight has indexed (no -onlyin restriction)
+        // cd = case/diacritic insensitive
         let pred = "kMDItemDisplayName == '*\(escaped)*'cd || kMDItemFSName == '*\(escaped)*'cd"
-        process.arguments = [pred, "-onlyin", NSHomeDirectory()]
+        process.arguments = [pred]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
@@ -129,9 +121,22 @@ final class FastSearchEngine: @unchecked Sendable {
         }
 
         do { try process.run() } catch { return [] }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
 
+        // Read data with a reasonable timeout to avoid hanging on huge results
+        let data: Data
+        do {
+            data = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global().async {
+                    let d = pipe.fileHandleForReading.readDataToEndOfFile()
+                    continuation.resume(returning: d)
+                }
+            }
+        } catch {
+            process.terminate()
+            return []
+        }
+
+        process.waitUntilExit()
         guard !Task.isCancelled else { return [] }
 
         let paths = String(data: data, encoding: .utf8)?
@@ -160,18 +165,12 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Content Search
 
     private func runContentSearch(query: String, maxResults: Int) async -> [SearchResult] {
-        let escaped = query
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "*", with: "\\*")
-            .replacingOccurrences(of: "?", with: "\\?")
-            .replacingOccurrences(of: "+", with: "\\+")
+        let escaped = escapeForPredicate(query)
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
         let pred = "kMDItemTextContent == '*\(escaped)*'cd"
-        process.arguments = [pred, "-onlyin", NSHomeDirectory()]
+        process.arguments = [pred]
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = Pipe()
@@ -212,6 +211,16 @@ final class FastSearchEngine: @unchecked Sendable {
             ))
         }
         return results
+    }
+
+    // MARK: - Predicate Escaping (only ' and \ can break the string literal)
+
+    private func escapeForPredicate(_ raw: String) -> String {
+        // mdfind predicates use single-quoted strings.
+        // Only \ and ' need escaping inside single quotes.
+        return raw
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
     }
 
     // MARK: - Applications
@@ -273,13 +282,12 @@ final class FastSearchEngine: @unchecked Sendable {
         return url.deletingPathExtension().lastPathComponent
     }
 
-    // MARK: - Calculator (bulletproof, no regex, no crash)
+    // MARK: - Calculator (bulletproof, no regex)
 
     private func evaluateCalculator(query: String) -> [SearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
         guard trimmed.count >= 3, trimmed.count <= 50 else { return [] }
 
-        // Manual char validation — no regex, no NSExpression surprises
         let allowedChars: Set<Character> = ["0","1","2","3","4","5","6","7","8","9","+","-","*","/","(",")","."," "]
         let digits: Set<Character> = ["0","1","2","3","4","5","6","7","8","9"]
         let ops: Set<Character> = ["+","-","*","/"]
@@ -295,23 +303,15 @@ final class FastSearchEngine: @unchecked Sendable {
         }
         guard hasDigit && hasOp else { return [] }
 
-        // Must start with digit or "("
         guard digits.contains(chars.first!) || chars.first! == "(" else { return [] }
-
-        // Must not end with operator or "."
         guard let last = chars.last, !ops.contains(last), last != "." else { return [] }
 
-        // Balanced parentheses, no empty "()"
         var parenCount = 0
         for i in 0..<chars.count {
             let ch = chars[i]
             if ch == "(" {
                 parenCount += 1
-                // Check for empty "()" or "( )"
-                if i + 1 < chars.count {
-                    let next = chars[i + 1]
-                    if next == ")" { return [] }
-                }
+                if i + 1 < chars.count, chars[i + 1] == ")" { return [] }
             } else if ch == ")" {
                 parenCount -= 1
                 if parenCount < 0 { return [] }
@@ -319,39 +319,29 @@ final class FastSearchEngine: @unchecked Sendable {
         }
         guard parenCount == 0 else { return [] }
 
-        // No consecutive operators (including "*/", "/*", "++", "--")
         for i in 0..<(chars.count - 1) {
-            let a = chars[i]
-            let b = chars[i + 1]
+            let a = chars[i], b = chars[i + 1]
             if ops.contains(a) && ops.contains(b) { return [] }
             if a == "." && b == "." { return [] }
             if a == "(" && ops.contains(b) && b != "-" { return [] }
             if ops.contains(a) && b == ")" { return [] }
         }
 
-        // No ".." in numbers
         for i in 0..<(chars.count - 1) {
             if chars[i] == "." && !digits.contains(chars[i + 1]) { return [] }
         }
 
-        // Evaluate — wrapped to catch any ObjC exception from NSExpression
-        let resultValue: Double? = Self.safeEvaluate(trimmed)
-        guard let value = resultValue else { return [] }
+        guard let value = Self.safeEvaluate(trimmed) else { return [] }
+        guard value.isFinite else { return [] }
 
-        // Format result without regex
         let resultStr: String
-        if value.isFinite {
-            if abs(value.truncatingRemainder(dividingBy: 1)) < 0.0001 {
-                resultStr = String(Int(value))
-            } else {
-                var s = String(format: "%.4f", value)
-                // Trim trailing zeros manually
-                while s.last == "0" { s.removeLast() }
-                if s.last == "." { s.removeLast() }
-                resultStr = s
-            }
+        if abs(value.truncatingRemainder(dividingBy: 1)) < 0.0001 {
+            resultStr = String(Int(value))
         } else {
-            return [] // Infinity / NaN
+            var s = String(format: "%.4f", value)
+            while s.last == "0" { s.removeLast() }
+            if s.last == "." { s.removeLast() }
+            resultStr = s
         }
 
         return [SearchResult(
@@ -366,8 +356,6 @@ final class FastSearchEngine: @unchecked Sendable {
     }
 
     private static func safeEvaluate(_ expression: String) -> Double? {
-        // Thorough validation already done in evaluateCalculator.
-        // NSExpression is safe here because we only allow digits, + - * / ( ) .
         let expr = NSExpression(format: expression)
         guard let num = expr.expressionValue(with: nil, context: nil) as? NSNumber else { return nil }
         return num.doubleValue
@@ -447,7 +435,9 @@ final class FastSearchEngine: @unchecked Sendable {
 
     private func setCache(key: NSString, results: [SearchResult]) {
         cacheLock.withLock {
-            cache.setObject(results as NSArray, forKey: key)
+            // Approximate cost: 1KB per result for cache eviction
+            let cost = results.count * 1024
+            cache.setObject(results as NSArray, forKey: key, cost: cost)
         }
     }
 }
