@@ -45,9 +45,11 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         showPreview = false
         previewResult = nil
 
+        let maxResults = SettingsManager.shared.maxResultsInt
+
         activeTask = Task { [weak self] in
             guard let self else { return }
-            await self.engine.search(query: query, maxResults: 200) { batch in
+            await self.engine.search(query: query, maxResults: maxResults) { batch in
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.15)) {
                     self.results = batch
@@ -104,7 +106,11 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     }
 
     private func updatePreview() {
-        guard showPreview, results.indices.contains(selectedIndex) else { return }
+        let autoPreview = SettingsManager.shared.showPreviewOnSelect
+        guard (showPreview || autoPreview), results.indices.contains(selectedIndex) else { return }
+        if autoPreview {
+            showPreview = true
+        }
         previewResult = results[selectedIndex]
     }
 }

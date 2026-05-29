@@ -152,23 +152,20 @@ final class FastSearchEngine: @unchecked Sendable {
 
     private func runFileSystemSearch(query: String, maxResults: Int) async -> [SearchResult] {
         let lowerQ = query.lowercased()
-        let targets = [
-            NSHomeDirectory(),
-            "/Applications",
-            "/System/Applications",
-            "/Users",
-            "/opt",
-            "/usr/local",
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Downloads").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents").path,
-            FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop").path,
-        ]
+        let showHidden = SettingsManager.shared.showHiddenFiles
+        var targets = SettingsManager.shared.searchScopes
+        // Always include home + common user dirs if not already present
+        let home = NSHomeDirectory()
+        let common = [home, "/Applications", "/System/Applications", "/Users"]
+        for c in common where !targets.contains(c) {
+            targets.append(c)
+        }
 
         return await withTaskGroup(of: [SearchResult].self) { group in
             for target in targets {
                 group.addTask {
                     guard !Task.isCancelled else { return [] }
-                    return self.shallowScan(at: target, query: lowerQ, maxResults: maxResults)
+                    return self.shallowScan(at: target, query: lowerQ, maxResults: maxResults, showHidden: showHidden)
                 }
             }
             var all: [SearchResult] = []
@@ -180,12 +177,16 @@ final class FastSearchEngine: @unchecked Sendable {
         }
     }
 
-    private func shallowScan(at root: String, query: String, maxResults: Int) -> [SearchResult] {
+    private func shallowScan(at root: String, query: String, maxResults: Int, showHidden: Bool) -> [SearchResult] {
         let fm = FileManager.default
+        var options: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants]
+        if !showHidden {
+            options.insert(.skipsHiddenFiles)
+        }
         guard let enumerator = fm.enumerator(
             at: URL(fileURLWithPath: root),
             includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            options: options,
             errorHandler: nil
         ) else { return [] }
 

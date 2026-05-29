@@ -1,10 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var searchDelay: Double = 60
-    @State private var maxResults: Double = 200
-    @State private var showHiddenFiles: Bool = false
-    @State private var showPreviewOnSelect: Bool = false
+    @StateObject private var settings = SettingsManager.shared
     @State private var selectedTab = 0
     @State private var isAnimated = false
 
@@ -38,12 +35,7 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         switch selectedTab {
-                        case 0: GeneralSettingsView(
-                            searchDelay: $searchDelay,
-                            maxResults: $maxResults,
-                            showHiddenFiles: $showHiddenFiles,
-                            showPreviewOnSelect: $showPreviewOnSelect
-                        )
+                        case 0: GeneralSettingsView()
                         case 1: SearchSettingsView()
                         case 2: AboutSettingsView()
                         default: EmptyView()
@@ -132,20 +124,21 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - General Settings
 struct GeneralSettingsView: View {
-    @Binding var searchDelay: Double
-    @Binding var maxResults: Double
-    @Binding var showHiddenFiles: Bool
-    @Binding var showPreviewOnSelect: Bool
+    @StateObject private var settings = SettingsManager.shared
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             SettingsToggleRow(
                 icon: "eye.fill",
                 iconColor: .blue,
                 title: "Show Hidden Files",
                 subtitle: "Include dot-prefixed files in search",
-                isOn: $showHiddenFiles
+                isOn: Binding(
+                    get: { settings.showHiddenFiles },
+                    set: { settings.showHiddenFiles = $0 }
+                )
             )
 
             SettingsToggleRow(
@@ -153,79 +146,112 @@ struct GeneralSettingsView: View {
                 iconColor: .purple,
                 title: "Auto Preview",
                 subtitle: "Show preview panel on selection",
-                isOn: $showPreviewOnSelect
+                isOn: Binding(
+                    get: { settings.showPreviewOnSelect },
+                    set: { settings.showPreviewOnSelect = $0 }
+                )
+            )
+
+            SettingsToggleRow(
+                icon: "power",
+                iconColor: .green,
+                title: "Launch at Login",
+                subtitle: "Start Snything automatically when logging in",
+                isOn: Binding(
+                    get: { settings.launchAtLogin },
+                    set: { settings.launchAtLogin = $0 }
+                )
             )
 
             SettingsSliderRow(
                 icon: "timer",
                 iconColor: .orange,
                 title: "Search Delay",
-                subtitle: "\(Int(searchDelay))ms",
-                value: $searchDelay,
-                range: 0...200
+                subtitle: "\(Int(settings.searchDelay))ms",
+                value: Binding(
+                    get: { settings.searchDelay },
+                    set: { settings.searchDelay = $0 }
+                ),
+                range: 0...300,
+                recommended: 60,
+                unit: "ms"
             )
 
             SettingsSliderRow(
                 icon: "list.number",
                 iconColor: .green,
                 title: "Max Results",
-                subtitle: "\(Int(maxResults)) items",
-                value: $maxResults,
-                range: 50...500
+                subtitle: "\(Int(settings.maxResults)) items",
+                value: Binding(
+                    get: { settings.maxResults },
+                    set: { settings.maxResults = $0 }
+                ),
+                range: 50...500,
+                recommended: 200,
+                unit: ""
             )
         }
     }
 }
 
+// MARK: - Search Settings
 struct SearchSettingsView: View {
-    @State private var selectedScopes: Set<String> = [
-        NSHomeDirectory(),
-        "/Applications",
-        "/Users"
-    ]
-    let availableScopes = [
-        (path: NSHomeDirectory(), name: "Home Directory"),
-        (path: "/Applications", name: "Applications"),
-        (path: "/Users", name: "All Users"),
-        (path: "/opt", name: "Opt"),
-        (path: "/usr/local", name: "Local"),
-    ]
+    @StateObject private var settings = SettingsManager.shared
+
+    private var availableScopes: [(path: String, name: String)] {
+        [
+            (path: NSHomeDirectory(), name: "Home Directory"),
+            (path: "/Applications", name: "Applications"),
+            (path: "/System/Applications", name: "System Applications"),
+            (path: "/Users", name: "All Users"),
+            (path: "/Library", name: "System Library"),
+            (path: "/opt", name: "Opt"),
+            (path: "/usr/local", name: "Local"),
+        ]
+    }
 
     var body: some View {
         VStack(spacing: 12) {
-            Text("Search Scopes")
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text("Search Scopes")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                Spacer()
+                Text("\(settings.searchScopes.count) selected")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
 
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 ForEach(availableScopes, id: \.path) { scope in
-                    let isSelected = selectedScopes.contains(scope.path)
+                    let isSelected = settings.searchScopes.contains(scope.path)
                     Button {
                         withAnimation(.easeInOut(duration: 0.15)) {
+                            var scopes = settings.searchScopes
                             if isSelected {
-                                selectedScopes.remove(scope.path)
+                                scopes.removeAll { $0 == scope.path }
                             } else {
-                                selectedScopes.insert(scope.path)
+                                scopes.append(scope.path)
                             }
+                            settings.searchScopes = scopes
                         }
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 16, weight: .semibold))
+                            Image(systemName: isSelected ? "checkmark.square.fill" : "square")
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.4))
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(scope.name)
                                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                                     .foregroundColor(.primary)
                                 Text(scope.path)
-                                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                    .font(.system(size: 10, weight: .regular, design: .monospaced))
                                     .foregroundColor(.secondary.opacity(0.7))
                             }
                             Spacer()
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
                                 .fill(isSelected ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.04))
@@ -242,23 +268,12 @@ struct SearchSettingsView: View {
     }
 }
 
+// MARK: - About Settings
 struct AboutSettingsView: View {
     var body: some View {
         VStack(spacing: 20) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 70, height: 70)
-                Image(systemName: "magnifyingglass.circle.fill")
-                    .font(.system(size: 36))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.accentColor, .cyan],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-            }
+            AppLogoImage(size: 56)
+                .shadow(color: .black.opacity(0.20), radius: 10, x: 0, y: 4)
 
             VStack(spacing: 6) {
                 Text("Snything")
@@ -275,15 +290,21 @@ struct AboutSettingsView: View {
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
 
-            HStack(spacing: 12) {
-                Link(destination: URL(string: "https://github.com")!) {
+            HStack(spacing: 10) {
+                Link(destination: URL(string: "https://github.com/williamcachamwri/Snything")!) {
                     Label("GitHub", systemImage: "globe")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                 }
                 .buttonStyle(SettingsLinkStyle())
 
-                Link(destination: URL(string: "https://windsurf.com/support")!) {
+                Link(destination: URL(string: "https://github.com/williamcachamwri/Snything/issues")!) {
                     Label("Support", systemImage: "questionmark.circle")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .buttonStyle(SettingsLinkStyle())
+
+                Link(destination: URL(string: "https://github.com/williamcachamwri/Snything/issues/new")!) {
+                    Label("Report Issue", systemImage: "exclamationmark.bubble")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                 }
                 .buttonStyle(SettingsLinkStyle())
@@ -348,6 +369,8 @@ struct SettingsSliderRow: View {
     let subtitle: String
     @Binding var value: Double
     let range: ClosedRange<Double>
+    let recommended: Double
+    let unit: String
 
     var body: some View {
         VStack(spacing: 10) {
@@ -362,9 +385,23 @@ struct SettingsSliderRow: View {
                     )
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary)
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(.primary)
+
+                        if value == recommended {
+                            Text("Recommended")
+                                .font(.system(size: 9, weight: .bold, design: .rounded))
+                                .foregroundColor(.green)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                        .fill(Color.green.opacity(0.12))
+                                )
+                        }
+                    }
                     Text(subtitle)
                         .font(.system(size: 11, weight: .regular, design: .rounded))
                         .foregroundColor(.secondary.opacity(0.8))
@@ -373,7 +410,7 @@ struct SettingsSliderRow: View {
                 Spacer()
             }
 
-            Slider(value: $value, in: range, step: 10)
+            Slider(value: $value, in: range, step: unit == "ms" ? 10 : 50)
                 .tint(.accentColor)
         }
         .padding(.horizontal, 14)
