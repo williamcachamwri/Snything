@@ -9,7 +9,6 @@ struct SplashView: View {
     @State private var textOffset: CGFloat = 28
     @State private var orbScale: CGFloat = 0.6
     @State private var orbOpacity: Double = 0
-    @State private var particlePhase: Double = 0
 
     let onComplete: () -> Void
 
@@ -71,17 +70,25 @@ struct SplashView: View {
                         .frame(width: 90, height: 90)
                         .rotationEffect(.degrees(ringRotation))
 
-                    // Icon
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.accentColor, .cyan],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                    // Custom App Icon Logo
+                    if let icon = Bundle.module.image(forResource: "AppIcon") {
+                        Image(nsImage: icon)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 64, height: 64)
+                            .shadow(color: .accentColor.opacity(0.35), radius: 14, x: 0, y: 5)
+                    } else {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [.accentColor, .cyan],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
                             )
-                        )
-                        .shadow(color: .accentColor.opacity(0.35), radius: 14, x: 0, y: 5)
+                            .shadow(color: .accentColor.opacity(0.35), radius: 14, x: 0, y: 5)
+                    }
                 }
                 .scaleEffect(iconScale)
                 .opacity(iconOpacity)

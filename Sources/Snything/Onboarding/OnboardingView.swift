@@ -191,15 +191,7 @@ struct WelcomeStepView: View {
             ZStack {
                 GradientOrbView()
 
-                Image(systemName: "magnifyingglass.circle.fill")
-                    .font(.system(size: 52))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.accentColor, .cyan],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                AppLogoImage(size: 64)
                     .shadow(color: .accentColor.opacity(0.3), radius: 14, x: 0, y: 5)
             }
             .scaleEffect(scale)
@@ -375,10 +367,8 @@ struct CompletionStepView: View {
             ZStack {
                 GradientOrbView()
 
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 56))
-                    .foregroundColor(.green)
-                    .shadow(color: .green.opacity(0.35), radius: 14, x: 0, y: 5)
+                AppLogoImage(size: 64)
+                    .shadow(color: .accentColor.opacity(0.35), radius: 14, x: 0, y: 5)
                     .scaleEffect(glowScale)
             }
             .scaleEffect(scale)
@@ -549,5 +539,29 @@ struct OnboardingButtonStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.7 : 1.0)
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - App Logo Image (from bundle resources)
+struct AppLogoImage: View {
+    let size: CGFloat
+
+    var body: some View {
+        if let icon = Bundle.module.image(forResource: "AppIcon") {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+        } else {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: size * 0.55, weight: .bold, design: .rounded))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.accentColor, .cyan],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        }
     }
 }
