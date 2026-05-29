@@ -61,7 +61,7 @@ struct ClipboardRowView: View {
         HStack(spacing: 12) {
             // Thumbnail for images, app icon for everything else
             ZStack {
-                if item.type == .image, let thumbnailImage {
+                if let thumbnailImage {
                     Image(nsImage: thumbnailImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
@@ -153,9 +153,11 @@ struct ClipboardRowView: View {
     }
 
     private func loadThumbnail() {
-        guard item.type == .image else { return }
         let path = item.content
-        guard path != "Image", FileManager.default.fileExists(atPath: path) else { return }
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
+        let imageExts = ["png", "jpg", "jpeg", "gif", "bmp", "tiff", "webp", "heic"]
+        guard imageExts.contains(ext) else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             guard let image = NSImage(contentsOfFile: path) else { return }
             let resized = image.resized(to: NSSize(width: self.iconSize * 2, height: self.iconSize * 2))
