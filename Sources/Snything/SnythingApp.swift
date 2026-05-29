@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkForUpdatesIfEnabled() {
         if SettingsManager.shared.autoCheckUpdates {
-            UpdateManager.shared.checkForUpdates(silent: true)
+            UpdateManager.shared.checkForUpdates()
         }
     }
 
@@ -184,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdates() {
-        UpdateManager.shared.checkForUpdates(silent: false)
+        UpdateManager.shared.checkForUpdates()
     }
 
     @objc private func quitApp() {

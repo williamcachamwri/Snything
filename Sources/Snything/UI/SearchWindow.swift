@@ -160,6 +160,8 @@ struct VisualEffectMaterialView: NSViewRepresentable {
 }
 
 struct SearchContainerView: View {
+    @StateObject private var updateManager = UpdateManager.shared
+
     var body: some View {
         ZStack {
             VisualEffectMaterialView()
@@ -178,6 +180,10 @@ struct SearchContainerView: View {
                         )
                 )
             SearchView()
+
+            if updateManager.showAlert {
+                UpdateAlertView()
+            }
         }
     }
 }
