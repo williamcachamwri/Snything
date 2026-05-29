@@ -50,15 +50,18 @@ jobs:
           echo "Updating continuous pre-release..."
           gh release delete continuous --yes 2>/dev/null || true
           git push origin :refs/tags/continuous 2>/dev/null || true
-          git tag -f continuous ${{ github.sha }}
+          git tag -f continuous "${{ github.sha }}"
           git push origin continuous --force
+          NOTES_FILE="/tmp/release_notes.md"
+          printf '%s\n\n- Commit: \`%s\`\n- Date: %s UTC\n' \
+            "Automated build from latest commit on main." \
+            "${{ github.sha }}" \
+            "$(date -u +'%Y-%m-%d %H:%M:%S')" \
+            > "$NOTES_FILE"
           gh release create continuous \
             ".build/Snything-Release.dmg" \
             --title "Snything Continuous Build" \
-            --notes "Automated build from latest commit on main.
-
-- Commit: \`${{ github.sha }}\`
-- Date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" \
+            --notes-file "$NOTES_FILE" \
             --prerelease
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -67,7 +70,7 @@ jobs:
       - name: Create Tagged Release
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION="${GITHUB_REF#refs/tags/}"
           echo "Creating release ${VERSION}..."
           gh release create "$VERSION" \
             ".build/Snything-Release.dmg" \
