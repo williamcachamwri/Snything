@@ -22,6 +22,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var keyboardFocusedIndex: Int = 0
     @Published var showPreview: Bool = false
     @Published var previewResult: SearchResult? = nil
+    @Published var showingRecents: Bool = false
     @Published var showingClipboard: Bool = false
 
     @Published var clipboardItems: [ClipboardItem] = []
@@ -32,6 +33,23 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
 
+    func showRecents() {
+        let recents = RecentFilesManager.shared.recentResults()
+        let newPaths = recents.map(\.path)
+        let currentPaths = results.map(\.path)
+        guard newPaths != currentPaths else { return }
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            results = recents
+            showingRecents = true
+            showingClipboard = false
+            selectedIndex = 0
+            keyboardFocusedIndex = 0
+            isSearching = false
+            showPreview = false
+            previewResult = nil
+        }
+    }
+
     func showClipboardHistory() {
         let items = clipboard.items
         let currentIDs = clipboardItems.map(\.id)
@@ -40,6 +58,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
             clipboardItems = items
             showingClipboard = true
+            showingRecents = false
             selectedClipboardIndex = 0
             clipboardFocusedIndex = 0
             isSearching = false
@@ -49,16 +68,25 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         }
     }
 
+    func toggleClipboardMode() {
+        if showingClipboard {
+            showRecents()
+        } else {
+            showClipboardHistory()
+        }
+    }
+
     func performSearch(query: String) {
         activeTask?.cancel()
         engine.cancel()
 
         guard query.count >= 1 else {
-            showClipboardHistory()
+            showRecents()
             return
         }
 
         showingClipboard = false
+        showingRecents = false
         isSearching = true
         selectedIndex = 0
         keyboardFocusedIndex = 0

@@ -1,5 +1,4 @@
 import Foundation
-import AppKit
 
 enum ClipboardContentType: String, Codable, Sendable {
     case text
@@ -13,8 +12,6 @@ struct ClipboardItem: Identifiable, Codable, Sendable, Hashable {
     let id: String
     let content: String
     let type: ClipboardContentType
-    let sourceAppName: String
-    let sourceBundleID: String
     let timestamp: Date
     let characterCount: Int
 
@@ -37,18 +34,8 @@ struct ClipboardItem: Identifiable, Codable, Sendable, Hashable {
     }
 
     var displaySubtitle: String {
-        let time = formattedTime(timestamp)
-        return "\(sourceAppName) · \(time)"
-    }
-
-    private func formattedTime(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
-        return formatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    var sourceAppIcon: NSImage? {
-        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: sourceBundleID) else { return nil }
-        return NSWorkspace.shared.icon(forFile: appURL.path)
+        return formatter.localizedString(for: timestamp, relativeTo: Date())
     }
 }

@@ -52,29 +52,18 @@ struct ClipboardListView: View {
 struct ClipboardRowView: View {
     let item: ClipboardItem
     let isSelected: Bool
-
-    @State private var appIcon: NSImage?
     private let iconSize: CGFloat = 32
 
     var body: some View {
         HStack(spacing: 12) {
-            // Source app icon or content type icon
-            ZStack {
-                if let appIcon {
-                    Image(nsImage: appIcon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                } else {
-                    Image(systemName: iconName)
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(iconColor)
-                }
-            }
-            .frame(width: iconSize, height: iconSize)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.secondary.opacity(0.06))
-            )
+            Image(systemName: iconName)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundColor(iconColor)
+                .frame(width: iconSize, height: iconSize)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.secondary.opacity(0.06))
+                )
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayTitle)
@@ -139,9 +128,6 @@ struct ClipboardRowView: View {
                 .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
         )
         .contentShape(Rectangle())
-        .onAppear {
-            loadIcon()
-        }
     }
 
     private var iconName: String {
@@ -174,14 +160,4 @@ struct ClipboardRowView: View {
         }
     }
 
-    private func loadIcon() {
-        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: item.sourceBundleID) else { return }
-        DispatchQueue.global(qos: .userInitiated).async {
-            let image = NSWorkspace.shared.icon(forFile: appURL.path)
-            let resized = image.resized(to: NSSize(width: self.iconSize * 2, height: self.iconSize * 2))
-            DispatchQueue.main.async {
-                self.appIcon = resized
-            }
-        }
-    }
 }

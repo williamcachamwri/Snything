@@ -1,18 +1,23 @@
 import Foundation
 import AppKit
-import Combine
 
-final class ClipboardManager: ObservableObject, @unchecked Sendable {
+final class ClipboardManager {
     static let shared = ClipboardManager()
-
-    @Published var items: [ClipboardItem] = []
 
     private let maxItems = 100
     private let pasteboard = NSPasteboard.general
     private var lastChangeCount = -1
     private var timer: Timer?
+    private let queue = DispatchQueue(label: "snything.clipboard", qos: .utility)
     private let itemsLock = NSLock()
     private let storageKey = "snything.clipboardHistory"
+
+    private var _items: [ClipboardItem] = []
+    var items: [ClipboardItem] {
+        itemsLock.lock()
+        defer { itemsLock.unlock() }
+        return _items
+    }
 
     private init() {
         loadFromDisk()
@@ -23,12 +28,13 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
         timer?.invalidate()
     }
 
-    // MARK: - Monitoring
+    // MARK: - Monitoring (background queue)
 
     private func startMonitoring() {
-        // Poll at 0.3s — fast enough to catch copies, low CPU impact
-        timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
-            self?.checkClipboard()
+        DispatchQueue.main.async { [weak self] in
+            self?.timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+                self?.queue.async { self?.checkClipboard() }
+            }
         }
     }
 
@@ -42,51 +48,42 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
         itemsLock.lock()
         defer { itemsLock.unlock() }
 
-        // Deduplicate: don't add exact same content as the most recent item
-        if let first = items.first, first.content == newItem.content, first.type == newItem.type {
+        if let first = _items.first, first.content == newItem.content, first.type == newItem.type {
             return
         }
 
-        var newItems = [newItem] + items
-        if newItems.count > maxItems {
-            newItems = Array(newItems.prefix(maxItems))
+        _items.insert(newItem, at: 0)
+        if _items.count > maxItems {
+            _items = Array(_items.prefix(maxItems))
         }
-        items = newItems
-        saveToDisk()
+
+        // Persist on background after mutation
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            self?.saveToDisk()
+        }
     }
 
     // MARK: - Capture
 
     private func captureItem() -> ClipboardItem? {
-        // Get frontmost app info
-        let frontmostApp = NSWorkspace.shared.frontmostApplication
-        let appName = frontmostApp?.localizedName ?? "Unknown"
-        let bundleID = frontmostApp?.bundleIdentifier ?? ""
-
-        // Priority: file URLs → plain text → URLs → RTF → image
         if let filePaths = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            let first = filePaths.first {
             return ClipboardItem(
                 id: UUID().uuidString,
                 content: first.path,
                 type: .file,
-                sourceAppName: appName,
-                sourceBundleID: bundleID,
                 timestamp: Date(),
                 characterCount: first.path.count
             )
         }
 
         if let string = pasteboard.string(forType: .string), !string.isEmpty {
-            // Detect if it's a URL
             if let url = URL(string: string.trimmingCharacters(in: .whitespaces)),
                url.scheme != nil, url.host != nil {
                 return ClipboardItem(
                     id: UUID().uuidString,
                     content: string,
                     type: .url,
-                    sourceAppName: appName,
-                    sourceBundleID: bundleID,
                     timestamp: Date(),
                     characterCount: string.count
                 )
@@ -95,8 +92,6 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
                 id: UUID().uuidString,
                 content: string,
                 type: .text,
-                sourceAppName: appName,
-                sourceBundleID: bundleID,
                 timestamp: Date(),
                 characterCount: string.count
             )
@@ -110,8 +105,6 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
                     id: UUID().uuidString,
                     content: plain,
                     type: .rtf,
-                    sourceAppName: appName,
-                    sourceBundleID: bundleID,
                     timestamp: Date(),
                     characterCount: plain.count
                 )
@@ -125,8 +118,6 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
                 id: UUID().uuidString,
                 content: "Image",
                 type: .image,
-                sourceAppName: appName,
-                sourceBundleID: bundleID,
                 timestamp: Date(),
                 characterCount: px
             )
@@ -153,35 +144,26 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
 
     func deleteItem(_ item: ClipboardItem) {
         itemsLock.lock()
-        items.removeAll { $0.id == item.id }
+        _items.removeAll { $0.id == item.id }
         itemsLock.unlock()
         saveToDisk()
     }
 
     func clearAll() {
         itemsLock.lock()
-        items.removeAll()
+        _items.removeAll()
         itemsLock.unlock()
         saveToDisk()
-    }
-
-    func search(query: String) -> [ClipboardItem] {
-        let lower = query.lowercased()
-        return items.filter {
-            $0.content.lowercased().contains(lower) ||
-            $0.sourceAppName.lowercased().contains(lower) ||
-            $0.type.rawValue.lowercased().contains(lower)
-        }
     }
 
     // MARK: - Persistence
 
     private func saveToDisk() {
         itemsLock.lock()
-        let toSave = items.prefix(maxItems)
+        let toSave = Array(_items.prefix(maxItems))
         itemsLock.unlock()
 
-        if let data = try? JSONEncoder().encode(Array(toSave)) {
+        if let data = try? JSONEncoder().encode(toSave) {
             UserDefaults.standard.set(data, forKey: storageKey)
         }
     }
@@ -189,6 +171,8 @@ final class ClipboardManager: ObservableObject, @unchecked Sendable {
     private func loadFromDisk() {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let decoded = try? JSONDecoder().decode([ClipboardItem].self, from: data) else { return }
-        items = decoded.prefix(maxItems).map { $0 }
+        itemsLock.lock()
+        _items = decoded.prefix(maxItems).map { $0 }
+        itemsLock.unlock()
     }
 }
