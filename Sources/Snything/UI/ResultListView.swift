@@ -32,7 +32,7 @@ struct ResultListView: View {
                         )
                         .id(result.id)
                         .contentShape(Rectangle())
-                        .transition(coordinator.showingRecents ? recentTransition : searchTransition)
+                        .transition(searchTransition)
                         .onTapGesture {
                             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                                 coordinator.selectedIndex = index
