@@ -1,0 +1,62 @@
+#!/bin/bash
+set -e
+
+APP_NAME="Snything"
+BUNDLE_ID="com.snything.mac"
+BUILD_DIR="$(cd "$(dirname "$0")" && pwd)/.build"
+RELEASE_BIN="${BUILD_DIR}/release/${APP_NAME}"
+APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
+
+echo "Building release binary..."
+cd "$(dirname "$0")"
+swift build -c release
+
+echo "Creating .app bundle..."
+rm -rf "${APP_BUNDLE}"
+mkdir -p "${APP_BUNDLE}/Contents/MacOS"
+mkdir -p "${APP_BUNDLE}/Contents/Resources"
+
+cp "${RELEASE_BIN}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+chmod +x "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+
+cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundleIdentifier</key>
+    <string>${BUNDLE_ID}</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>${APP_NAME}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+EOF
+
+if [ -f "Snything.entitlements" ]; then
+    cp "Snything.entitlements" "${APP_BUNDLE}/Contents/Resources/"
+fi
+
+echo "Signing app bundle..."
+codesign --force --deep --sign - \
+    --entitlements "$(dirname "$0")/Snything.entitlements" \
+    "${APP_BUNDLE}" 2>/dev/null || codesign --force --deep --sign - "${APP_BUNDLE}"
+
+echo "Done: ${APP_BUNDLE}"
