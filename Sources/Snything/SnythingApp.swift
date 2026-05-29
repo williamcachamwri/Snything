@@ -175,11 +175,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let window = createHostingWindow(
             rootView: SettingsView(),
-            size: NSSize(width: 480, height: 420)
+            size: NSSize(width: 480, height: 420),
+            level: .modalPanel
         )
         self.settingsWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateManager.shared.checkForUpdates(silent: false)
     }
 
     @objc private func quitApp() {
@@ -207,6 +212,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
+
+        let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "")
+        updateItem.target = self
+        menu.addItem(updateItem)
 
         let resetItem = NSMenuItem(title: "Reset Onboarding", action: #selector(resetOnboarding), keyEquivalent: "")
         resetItem.target = self
@@ -236,7 +245,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func createHostingWindow<Content: View>(
         rootView: Content,
-        size: NSSize
+        size: NSSize,
+        level: NSWindow.Level = .floating
     ) -> NSWindow {
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -244,12 +254,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
-        panel.level = .floating
+        panel.level = level
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
         panel.center()
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.becomesKeyOnlyIfNeeded = false
 

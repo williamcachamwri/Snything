@@ -151,9 +151,21 @@ final class UpdateManager: ObservableObject {
         alert.addButton(withTitle: "View Release")
 
         DispatchQueue.main.async {
-            guard let window = NSApp.keyWindow else { return }
-            alert.beginSheetModal(for: window) { [weak self] response in
-                guard let self = self else { return }
+            let targetWindow = NSApp.keyWindow ?? NSApp.windows.first
+            if let window = targetWindow {
+                alert.beginSheetModal(for: window) { [weak self] response in
+                    guard let self = self else { return }
+                    switch response {
+                    case .alertFirstButtonReturn:
+                        self.installUpdate()
+                    case .alertThirdButtonReturn:
+                        NSWorkspace.shared.open(URL(string: self.releasesPage)!)
+                    default:
+                        break
+                    }
+                }
+            } else {
+                let response = alert.runModal()
                 switch response {
                 case .alertFirstButtonReturn:
                     self.installUpdate()
@@ -218,12 +230,12 @@ final class UpdateManager: ObservableObject {
             try FileManager.default.copyItem(at: sourceApp, to: targetApp)
         } catch {
             statusMessage = "Failed to install: \(error.localizedDescription)"
-            detach(dmgPath: dmgPath)
+            detach(mountPoint: volPath)
             return
         }
 
         // Eject DMG
-        detach(dmgPath: dmgPath)
+        detach(mountPoint: volPath)
         try? FileManager.default.removeItem(at: dmgPath)
 
         // Relaunch
@@ -238,10 +250,10 @@ final class UpdateManager: ObservableObject {
         }
     }
 
-    private func detach(dmgPath: URL) {
+    private func detach(mountPoint: String) {
         let detachProcess = Process()
         detachProcess.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        detachProcess.arguments = ["detach", dmgPath.path]
+        detachProcess.arguments = ["detach", mountPoint]
         try? detachProcess.run()
     }
 }
