@@ -2,16 +2,19 @@ import SwiftUI
 
 struct ClipboardPreviewView: View {
     let item: ClipboardItem
+    var onClearAll: () -> Void
+
     @State private var sourceAppIcon: NSImage? = nil
     @State private var imageContent: NSImage? = nil
+    @State private var isHoveringClear = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Main content area
-            contentArea
+            // Main content area with app icon badge overlay
+            contentAreaWithBadge
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom info bar with source app icon
+            // Bottom info bar
             if !item.sourceBundleID.isEmpty {
                 bottomBar
             }
@@ -26,6 +29,80 @@ struct ClipboardPreviewView: View {
             loadSourceAppIcon()
             loadImageIfNeeded()
         }
+    }
+
+    @ViewBuilder
+    private var contentAreaWithBadge: some View {
+        ZStack(alignment: .bottomTrailing) {
+            // Main content
+            contentArea
+
+            // App icon badge overlay at bottom-right of content
+            if let sourceAppIcon {
+                appIconBadge(icon: sourceAppIcon)
+            }
+
+            // Clear button in top-right
+            clearButton
+                .padding(.top, 12)
+                .padding(.trailing, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+    }
+
+    private func appIconBadge(icon: NSImage) -> some View {
+        HStack(spacing: 6) {
+            Image(nsImage: icon)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 20, height: 20)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+
+            Text(item.sourceAppName)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.9))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.black.opacity(0.45))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                )
+        )
+        .padding(.trailing, 12)
+        .padding(.bottom, 12)
+    }
+
+    private var clearButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                onClearAll()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "trash")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Clear")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(isHoveringClear ? .red.opacity(0.9) : .secondary.opacity(0.7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isHoveringClear ? Color.red.opacity(0.12) : Color.secondary.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isHoveringClear ? Color.red.opacity(0.25) : Color.white.opacity(0.06), lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onHover { isHoveringClear = $0 }
+        .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHoveringClear)
     }
 
     @ViewBuilder
@@ -199,31 +276,17 @@ struct ClipboardPreviewView: View {
         HStack {
             Spacer()
 
-            HStack(spacing: 8) {
-                if let sourceAppIcon {
-                    Image(nsImage: sourceAppIcon)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                }
-
-                Text("Copied from \(item.sourceAppName)")
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.8))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.secondary.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-                    )
-            )
-            .padding(.trailing, 12)
-            .padding(.bottom, 12)
+            Text(item.displaySubtitle)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundColor(.secondary.opacity(0.6))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.secondary.opacity(0.05))
+                )
+                .padding(.trailing, 12)
+                .padding(.bottom, 8)
         }
     }
 
@@ -232,7 +295,7 @@ struct ClipboardPreviewView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: item.sourceBundleID) else { return }
             let icon = NSWorkspace.shared.icon(forFile: appURL.path)
-            let resized = icon.resized(to: NSSize(width: 36, height: 36))
+            let resized = icon.resized(to: NSSize(width: 40, height: 40))
             DispatchQueue.main.async {
                 self.sourceAppIcon = resized
             }
