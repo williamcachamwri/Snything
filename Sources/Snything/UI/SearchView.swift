@@ -62,7 +62,8 @@ struct SearchView: View {
     private func handleQueryChange(_ newValue: String) {
         debounceTask?.cancel()
         debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 60_000_000)
+            let delay = SettingsManager.shared.debounceNanoseconds
+            try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
             coordinator.performSearch(query: newValue)
         }
