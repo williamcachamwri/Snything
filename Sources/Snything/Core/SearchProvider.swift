@@ -91,22 +91,13 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func openSelected() {
         guard results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
-        RecentFilesManager.shared.recordAccess(url: result.url)
         NSWorkspace.shared.open(result.url)
     }
 
     func revealSelected() {
         guard results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
-        RecentFilesManager.shared.recordAccess(url: result.url)
         NSWorkspace.shared.selectFile(result.url.path, inFileViewerRootedAtPath: "")
-    }
-
-    func dragItem(at index: Int) -> NSItemProvider? {
-        guard results.indices.contains(index) else { return nil }
-        let result = results[index]
-        RecentFilesManager.shared.recordAccess(url: result.url)
-        return NSItemProvider(contentsOf: result.url)
     }
 
     func togglePreview() {

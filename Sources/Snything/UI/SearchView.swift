@@ -134,8 +134,7 @@ struct SearchView: View {
                 }
                 self.query = ""
                 coordinator.cancel()
-                coordinator.showRecents()
-                self.isSearchFocused = true
+                NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
                 return true
             default:
                 if !self.isSearchFocused && event.characters?.count == 1 {

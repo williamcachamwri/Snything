@@ -80,8 +80,7 @@ struct ResultRowView: View {
             isHovered = hover
         }
         .onDrag {
-            RecentFilesManager.shared.recordAccess(url: result.url)
-            return NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
+            NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
         }
     }
 
