@@ -40,6 +40,8 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <string>1.0.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -49,6 +51,10 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
 </dict>
 </plist>
 EOF
+
+if [ -f "Sources/Snything/Resources/AppIcon.icns" ]; then
+    cp "Sources/Snything/Resources/AppIcon.icns" "${APP_BUNDLE}/Contents/Resources/"
+fi
 
 if [ -f "Snything.entitlements" ]; then
     cp "Snything.entitlements" "${APP_BUNDLE}/Contents/Resources/"
