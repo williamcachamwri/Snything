@@ -40,6 +40,11 @@ final class FileIndex: @unchecked Sendable {
         let localEntries: [IndexEntry]
         localEntries = indexLock.withLock { self.entries }
 
+        // If index is still empty (building), fallback to quick filesystem scan
+        if localEntries.isEmpty {
+            return quickScan(query: lowerQ, maxResults: maxResults)
+        }
+
         for entry in localEntries {
             guard !Task.isCancelled else { break }
 
@@ -96,6 +101,35 @@ final class FileIndex: @unchecked Sendable {
         return results
     }
 
+    /// Fallback scan when index is still building
+    private func quickScan(query: String, maxResults: Int) -> [SearchResult] {
+        let home = NSHomeDirectory()
+        let dirs = [home, home + "/Downloads", home + "/Desktop", home + "/Documents", home + "/Pictures"]
+        let fm = FileManager.default
+        var results: [SearchResult] = []
+        results.reserveCapacity(maxResults)
+
+        for dir in dirs {
+            guard !Task.isCancelled else { break }
+            guard let urls = try? fm.contentsOfDirectory(at: URL(fileURLWithPath: dir), includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey], options: .skipsHiddenFiles) else { continue }
+            for url in urls {
+                if Task.isCancelled { break }
+                let name = url.lastPathComponent.lowercased()
+                guard name.contains(query) else { continue }
+                let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey])
+                let kind: SearchResult.ResultKind = (values?.isDirectory ?? false) ? .folder : SearchResult.kind(from: url)
+                let score: Double = name.hasPrefix(query) ? 400 : 200
+                results.append(SearchResult(
+                    url: url, name: url.lastPathComponent, path: url.path,
+                    kind: kind, size: values?.fileSize.map(Int64.init), modifiedDate: values?.contentModificationDate,
+                    relevanceScore: score
+                ))
+                if results.count >= maxResults { return results }
+            }
+        }
+        return results
+    }
+
     // MARK: - Indexing
 
     func ensureIndexed() {
@@ -111,9 +145,22 @@ final class FileIndex: @unchecked Sendable {
     }
 
     private func buildIndex() {
-        let fm = FileManager.default
         let home = NSHomeDirectory()
-        let scopes = [home, "/Applications", "/System/Applications", "/Users"]
+        // Scan user's home deeply + common system app dirs
+        let scopes = [
+            home,
+            home + "/Downloads",
+            home + "/Desktop",
+            home + "/Documents",
+            home + "/Pictures",
+            home + "/Movies",
+            home + "/Music",
+            home + "/Library/CloudStorage",
+            "/Applications",
+            "/System/Applications",
+            "/System/Library/CoreServices",
+            "/Users",
+        ]
 
         var newEntries: [IndexEntry] = []
         newEntries.reserveCapacity(200_000)

@@ -66,9 +66,9 @@ final class FastSearchEngine: @unchecked Sendable {
             let spot = await spotResults
             allResults.append(contentsOf: spot)
 
-            // Phase 5: Content search (only for longer queries, low priority)
-            if q.count >= 3 {
-                let content = await self.runContentSearch(query: q, maxResults: 15)
+            // Phase 5: Content search (only for longer queries, strictly limited)
+            if q.count >= 5 {
+                let content = await self.runContentSearch(query: q, maxResults: 3)
                 allResults.append(contentsOf: content)
             }
 
@@ -205,8 +205,8 @@ final class FastSearchEngine: @unchecked Sendable {
                 url: url, name: url.lastPathComponent, path: url.path,
                 kind: SearchResult.kind(from: url),
                 size: url.fileSize(), modifiedDate: url.modDate(),
-                relevanceScore: 0.5,
-                subtitle: "Found in content",
+                relevanceScore: 0.05,
+                subtitle: "Content match",
                 actionType: .openFile, actionPayload: ""
             ))
         }
