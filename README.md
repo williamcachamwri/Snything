@@ -1,10 +1,25 @@
-# Snything
+<p align="center">
+  <img src="Sources/Snything/Resources/AppIcon.png" width="128" height="128" alt="Snything App Icon" />
+</p>
 
-A minimalist, blazing-fast native search utility for macOS. Built entirely with SwiftUI and native macOS frameworks. No Electron, no web views, just pure speed.
+<h1 align="center">Snything</h1>
+
+<p align="center">
+  <b>A minimalist, blazing-fast native search utility for macOS.</b><br/>
+  Built entirely with SwiftUI and native macOS frameworks. No Electron, no web views, just pure speed.
+</p>
+
+<p align="center">
+  <a href="https://github.com/williamcachamwri/Snything/releases/latest">Latest Release</a>
+  &nbsp;&bull;&nbsp;
+  <a href="https://github.com/williamcachamwri/Snything/issues">Issues &amp; Support</a>
+</p>
+
+---
 
 ## Features
 
-- **Dual Search Engines**: Combines macOS Spotlight (mdfind CLI) with parallel FileManager enumeration for comprehensive, instant results across your entire system.
+- **Dual Search Engines**: Combines macOS Spotlight (`mdfind` CLI) with parallel FileManager enumeration for comprehensive, instant results across your entire system.
 - **Global Hotkey**: Invoke anywhere with a configurable global shortcut (default: Command+Space).
 - **Quick Preview**: Press Space on any result to reveal a rich preview panel without leaving the search context.
   - **Folders**: Expandable tree structure with recursive file/directory counts and total size calculation. Displays Git branch and working tree status when inside a repository.
@@ -15,7 +30,7 @@ A minimalist, blazing-fast native search utility for macOS. Built entirely with 
 - **Glassmorphism UI**: Translucent floating panel with spring physics, smooth animations, and a modern aesthetic that feels at home on macOS.
 - **Keyboard-First Navigation**: Full arrow-key navigation with Enter to open and Space to preview. No mouse required.
 - **Onboarding Flow**: Guided first-launch experience for permissions (Accessibility for global hotkey, Full Disk Access for complete search coverage).
-- **Settings Panel**: Accessible from the menu bar. Configure search delay, result limits, and search scopes.
+- **Settings Panel**: Accessible from the menu bar. Configure search delay, result limits, search scopes, auto preview, hidden files, and launch at login.
 - **Menu Bar Integration**: Lives in the status bar with magnifying glass icon. LSUIElement mode hides the Dock icon for a clean, utility-like feel.
 
 ## Architecture
@@ -26,6 +41,7 @@ Sources/Snything/
     FastSearchEngine.swift      -- mdfind + parallel FS scan + aggressive NSCache
     SearchProvider.swift          -- SearchCoordinator with debounce and cancellation
     SearchResult.swift            -- Unified model with kind inference
+    SettingsManager.swift           -- @AppStorage persistence for all user settings
     GlobalHotkeyManager.swift     -- Carbon Event Hot Keys for Command+Space
     KeyboardManager.swift         -- Global key-down monitor for arrow/enter/space/esc
     PermissionsManager.swift      -- Accessibility & Full Disk Access checks
@@ -55,10 +71,18 @@ swift test
 To create a signed `.app` bundle:
 
 ```bash
-./build_app.sh
+.github/build_app.sh
 ```
 
 The release bundle will be produced at `.build/Snything.app`.
+
+To create a release DMG:
+
+```bash
+.github/create_dmg.sh
+```
+
+The DMG will be produced at `.build/Snything-Release.dmg`.
 
 ## Requirements
 
@@ -76,6 +100,8 @@ By default, Snything indexes and searches across:
 - /opt, /usr/local
 - ~/Downloads, ~/Documents, ~/Desktop
 
+You can customize scopes from the **Settings > Search** panel.
+
 ## Privacy & Permissions
 
 Snything requires two macOS permissions to function fully:
@@ -84,27 +110,3 @@ Snything requires two macOS permissions to function fully:
 2. **Full Disk Access**: Required to search inside protected system folders and user directories that are otherwise inaccessible to third-party apps.
 
 No data leaves your machine. All indexing and search happen locally.
-
-## License
-
-MIT License
-
-Copyright (c) 2025 williamcachamwri
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
