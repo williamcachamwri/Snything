@@ -590,7 +590,7 @@ struct AppLogoImage: View {
     let size: CGFloat
 
     var body: some View {
-        if let icon = Bundle.module.image(forResource: "AppIcon") {
+        if let icon = Bundle.main.image(forResource: "AppIcon") {
             Image(nsImage: icon)
                 .resizable()
                 .aspectRatio(contentMode: .fit)

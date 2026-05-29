@@ -51,7 +51,7 @@ struct SplashView: View {
                         .blur(radius: 28)
 
                     // Custom App Icon Logo
-                    if let icon = Bundle.module.image(forResource: "AppIcon") {
+                    if let icon = Bundle.main.image(forResource: "AppIcon") {
                         Image(nsImage: icon)
                             .resizable()
                             .aspectRatio(contentMode: .fit)

@@ -23,6 +23,12 @@ mkdir -p "${APP_BUNDLE}/Contents/Resources"
 cp "${RELEASE_BIN}" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 chmod +x "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
 
+# Copy all resources into the .app bundle (used by Bundle.main)
+if [ -d "Sources/Snything/Resources" ]; then
+    echo "Copying resources..."
+    cp Sources/Snything/Resources/* "${APP_BUNDLE}/Contents/Resources/" 2>/dev/null || true
+fi
+
 cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
