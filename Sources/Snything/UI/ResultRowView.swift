@@ -30,6 +30,7 @@ struct ResultRowView: View {
 
             if isSelected {
                 HStack(spacing: 6) {
+                    ActionBadge(icon: "arrow.up.doc", label: "Drag")
                     ActionBadge(icon: "return", label: "Open")
                     ActionBadge(icon: "space", label: "Preview")
                 }
@@ -77,6 +78,10 @@ struct ResultRowView: View {
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovered)
         .onHover { hover in
             isHovered = hover
+        }
+        .onDrag {
+            RecentFilesManager.shared.recordAccess(url: result.url)
+            return NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
         }
     }
 

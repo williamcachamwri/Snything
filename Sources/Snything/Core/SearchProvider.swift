@@ -22,27 +22,35 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var keyboardFocusedIndex: Int = 0
     @Published var showPreview: Bool = false
     @Published var previewResult: SearchResult? = nil
+    @Published var showingRecents: Bool = false
 
     private let engine = FastSearchEngine.shared
     private var activeTask: Task<Void, Never>?
+
+    func showRecents() {
+        let recents = RecentFilesManager.shared.recentResults()
+        results = recents
+        showingRecents = true
+        selectedIndex = 0
+        keyboardFocusedIndex = 0
+        isSearching = false
+        showPreview = false
+        previewResult = nil
+    }
 
     func performSearch(query: String) {
         activeTask?.cancel()
         engine.cancel()
 
         guard query.count >= 1 else {
-            DispatchQueue.main.async { [weak self] in
-                self?.results = []
-                self?.isSearching = false
-                self?.selectedIndex = 0
-                self?.showPreview = false
-                self?.previewResult = nil
-            }
+            showRecents()
             return
         }
 
+        showingRecents = false
         isSearching = true
         selectedIndex = 0
+        keyboardFocusedIndex = 0
         showPreview = false
         previewResult = nil
 
@@ -83,13 +91,22 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func openSelected() {
         guard results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
+        RecentFilesManager.shared.recordAccess(url: result.url)
         NSWorkspace.shared.open(result.url)
     }
 
     func revealSelected() {
         guard results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
+        RecentFilesManager.shared.recordAccess(url: result.url)
         NSWorkspace.shared.selectFile(result.url.path, inFileViewerRootedAtPath: "")
+    }
+
+    func dragItem(at index: Int) -> NSItemProvider? {
+        guard results.indices.contains(index) else { return nil }
+        let result = results[index]
+        RecentFilesManager.shared.recordAccess(url: result.url)
+        return NSItemProvider(contentsOf: result.url)
     }
 
     func togglePreview() {

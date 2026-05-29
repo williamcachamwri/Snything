@@ -29,6 +29,7 @@ struct SearchView: View {
         .onAppear {
             isSearchFocused = true
             setupKeyboardMonitor()
+            coordinator.showRecents()
         }
         .onDisappear {
             coordinator.cancel()
@@ -48,12 +49,29 @@ struct SearchView: View {
             .focused($isSearchFocused)
             .padding(.bottom, 12)
 
-            if coordinator.isSearching && coordinator.results.isEmpty {
+            if coordinator.showingRecents && coordinator.results.isEmpty {
+                noRecentsState
+            } else if coordinator.isSearching && coordinator.results.isEmpty {
                 searchingIndicator
             } else if coordinator.results.isEmpty && !query.isEmpty {
                 emptyState
             } else {
-                ResultListView(coordinator: coordinator, namespace: animationNamespace)
+                VStack(spacing: 0) {
+                    if coordinator.showingRecents {
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary.opacity(0.7))
+                            Text("Recent Files")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(.secondary.opacity(0.7))
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 6)
+                    }
+                    ResultListView(coordinator: coordinator, namespace: animationNamespace)
+                }
             }
         }
         .padding(20)
@@ -61,6 +79,10 @@ struct SearchView: View {
 
     private func handleQueryChange(_ newValue: String) {
         debounceTask?.cancel()
+        if newValue.isEmpty {
+            coordinator.showRecents()
+            return
+        }
         debounceTask = Task {
             let delay = SettingsManager.shared.debounceNanoseconds
             try? await Task.sleep(nanoseconds: delay)
@@ -112,9 +134,8 @@ struct SearchView: View {
                 }
                 self.query = ""
                 coordinator.cancel()
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
-                }
+                coordinator.showRecents()
+                self.isSearchFocused = true
                 return true
             default:
                 if !self.isSearchFocused && event.characters?.count == 1 {
@@ -125,6 +146,23 @@ struct SearchView: View {
                 return false
             }
         }
+    }
+
+    @ViewBuilder
+    private var noRecentsState: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "clock")
+                .font(.system(size: 32, weight: .light))
+                .foregroundColor(.secondary.opacity(0.6))
+            Text("No recent files")
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+            Text("Open or search for files to see them here")
+                .font(.system(size: 12, weight: .regular, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.7))
+        }
+        .frame(maxHeight: .infinity)
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
     }
 
     @ViewBuilder
