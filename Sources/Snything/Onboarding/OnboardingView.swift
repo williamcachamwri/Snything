@@ -1,6 +1,74 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Floating Particle Background
+struct FloatingParticlesView: View {
+    @State private var phase: Double = 0
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1/30, paused: false)) { _ in
+            Canvas { context, size in
+                let w = size.width
+                let h = size.height
+                for i in 0..<18 {
+                    let x = sin(phase * 0.3 + Double(i) * 1.3) * w * 0.4 + w * 0.5
+                    let y = cos(phase * 0.2 + Double(i) * 0.9) * h * 0.4 + h * 0.5
+                    let r = 1.5 + sin(phase + Double(i)) * 0.8
+                    let opacity = 0.08 + sin(phase * 0.5 + Double(i) * 0.7) * 0.04
+                    let rect = CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
+                    context.fill(
+                        Path(ellipseIn: rect),
+                        with: .color(Color.white.opacity(opacity))
+                    )
+                }
+            }
+            .allowsHitTesting(false)
+            .onAppear {
+                withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
+                    phase = 1000
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Gradient Orb
+struct GradientOrbView: View {
+    @State private var rotation: Double = 0
+    @State private var pulse: CGFloat = 1.0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    AngularGradient(
+                        gradient: Gradient(colors: [
+                            Color.accentColor.opacity(0.18),
+                            Color.pink.opacity(0.10),
+                            Color.cyan.opacity(0.12),
+                            Color.accentColor.opacity(0.18)
+                        ]),
+                        center: .center,
+                        angle: .degrees(rotation)
+                    )
+                )
+                .frame(width: 140, height: 140)
+                .scaleEffect(pulse)
+                .blur(radius: 20)
+                .opacity(0.8)
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 8).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                pulse = 1.15
+            }
+        }
+    }
+}
+
+// MARK: - Onboarding Container
 struct OnboardingContainerView: View {
     @StateObject private var permissions = PermissionsManager()
     @State private var currentStep = 0
@@ -11,11 +79,11 @@ struct OnboardingContainerView: View {
         ZStack {
             VisualEffectMaterialView()
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
                         .stroke(
                             LinearGradient(
                                 gradient: Gradient(colors: [
-                                    Color.white.opacity(0.20),
+                                    Color.white.opacity(0.22),
                                     Color.white.opacity(0.05)
                                 ]),
                                 startPoint: .topLeading,
@@ -24,6 +92,8 @@ struct OnboardingContainerView: View {
                             lineWidth: 1
                         )
                 )
+
+            FloatingParticlesView()
 
             if isComplete {
                 CompletionStepView(onComplete: onComplete)
@@ -34,8 +104,8 @@ struct OnboardingContainerView: View {
             } else {
                 VStack(spacing: 0) {
                     StepIndicator(current: currentStep, total: 3)
-                        .padding(.top, 28)
-                        .padding(.bottom, 24)
+                        .padding(.top, 32)
+                        .padding(.bottom, 20)
 
                     Group {
                         switch currentStep {
@@ -50,7 +120,7 @@ struct OnboardingContainerView: View {
                     HStack(spacing: 12) {
                         if currentStep > 0 {
                             Button("Back") {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                     currentStep -= 1
                                 }
                             }
@@ -62,11 +132,11 @@ struct OnboardingContainerView: View {
 
                         Button(nextButtonTitle) {
                             if currentStep == 2 {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) {
                                     isComplete = true
                                 }
                             } else {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                     currentStep += 1
                                 }
                             }
@@ -89,6 +159,7 @@ struct OnboardingContainerView: View {
     }
 }
 
+// MARK: - Step Indicator
 struct StepIndicator: View {
     let current: Int
     let total: Int
@@ -97,34 +168,31 @@ struct StepIndicator: View {
         HStack(spacing: 8) {
             ForEach(0..<total, id: \.self) { idx in
                 Capsule()
-                    .fill(idx == current ? Color.accentColor : Color.secondary.opacity(0.15))
-                    .frame(width: idx == current ? 28 : 8, height: 8)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.7), value: current)
+                    .fill(idx == current ? Color.accentColor : Color.secondary.opacity(0.12))
+                    .frame(width: idx == current ? 32 : 8, height: 8)
+                    .shadow(
+                        color: idx == current ? Color.accentColor.opacity(0.3) : Color.clear,
+                        radius: idx == current ? 6 : 0
+                    )
+                    .animation(.spring(response: 0.45, dampingFraction: 0.7), value: current)
             }
         }
     }
 }
 
+// MARK: - Welcome Step
 struct WelcomeStepView: View {
     @State private var scale: CGFloat = 0.85
     @State private var opacity: Double = 0
-    @State private var glowScale: CGFloat = 0.5
+    @State private var glowOpacity: Double = 0
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 32) {
             ZStack {
-                Circle()
-                    .fill(
-                        AngularGradient(
-                            gradient: Gradient(colors: [.accentColor.opacity(0.15), .cyan.opacity(0.10), .accentColor.opacity(0.15)]),
-                            center: .center
-                        )
-                    )
-                    .frame(width: 100, height: 100)
-                    .scaleEffect(glowScale)
+                GradientOrbView()
 
                 Image(systemName: "magnifyingglass.circle.fill")
-                    .font(.system(size: 48))
+                    .font(.system(size: 52))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.accentColor, .cyan],
@@ -132,14 +200,14 @@ struct WelcomeStepView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .shadow(color: .accentColor.opacity(0.25), radius: 12, x: 0, y: 4)
+                    .shadow(color: .accentColor.opacity(0.3), radius: 14, x: 0, y: 5)
             }
             .scaleEffect(scale)
             .opacity(opacity)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 14) {
                 Text("Welcome to Snything")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.primary, .primary.opacity(0.75)],
@@ -149,44 +217,47 @@ struct WelcomeStepView: View {
                     )
 
                 Text("A minimalist, blazing-fast search for your Mac.\nLet's set it up in just a few steps.")
-                    .font(.system(size: 13, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.85))
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.8))
                     .multilineTextAlignment(.center)
-                    .lineSpacing(3)
+                    .lineSpacing(4)
+                    .tracking(0.2)
             }
             .opacity(opacity)
         }
         .padding(.horizontal, 36)
         .onAppear {
-            withAnimation(.spring(response: 0.6, dampingFraction: 0.7).delay(0.05)) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.68).delay(0.05)) {
                 scale = 1.0
                 opacity = 1.0
             }
             withAnimation(.easeOut(duration: 0.8).delay(0.15)) {
-                glowScale = 1.0
+                glowOpacity = 1.0
             }
         }
     }
 }
 
+// MARK: - Permissions Step
 struct PermissionsStepView: View {
     @ObservedObject var permissions: PermissionsManager
     @State private var pulse = false
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 20) {
             Text("Permissions")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
+                .tracking(0.3)
 
             Text("Snything needs access to search everywhere\nand listen for global keyboard shortcuts.")
                 .font(.system(size: 13, weight: .regular, design: .rounded))
-                .foregroundColor(.secondary.opacity(0.85))
+                .foregroundColor(.secondary.opacity(0.8))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
                 .padding(.horizontal, 36)
 
-            VStack(spacing: 14) {
+            VStack(spacing: 12) {
                 PermissionRow(
                     icon: "externaldrive.fill",
                     iconColor: .blue,
@@ -228,29 +299,31 @@ struct PermissionsStepView: View {
     }
 }
 
+// MARK: - Shortcut Step
 struct ShortcutStepView: View {
     @ObservedObject var permissions: PermissionsManager
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 20) {
             Text("Global Shortcut")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
+                .tracking(0.3)
 
             Text("Open Snything from anywhere with a single keystroke.")
                 .font(.system(size: 13, weight: .regular, design: .rounded))
-                .foregroundColor(.secondary.opacity(0.85))
+                .foregroundColor(.secondary.opacity(0.8))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
                 .padding(.horizontal, 36)
 
-            VStack(spacing: 18) {
+            VStack(spacing: 16) {
                 HStack(spacing: 8) {
                     OnboardingShortcutBadge(text: "⌘")
                     OnboardingShortcutBadge(text: "Space")
                 }
-                .padding(.vertical, 24)
-                .padding(.horizontal, 40)
+                .padding(.vertical, 22)
+                .padding(.horizontal, 44)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(Color.secondary.opacity(0.06))
@@ -259,7 +332,7 @@ struct ShortcutStepView: View {
                                 .stroke(
                                     LinearGradient(
                                         gradient: Gradient(colors: [
-                                            Color.accentColor.opacity(0.35),
+                                            Color.accentColor.opacity(0.40),
                                             Color.cyan.opacity(0.15)
                                         ]),
                                         startPoint: .topLeading,
@@ -290,32 +363,32 @@ struct ShortcutStepView: View {
     }
 }
 
+// MARK: - Completion Step
 struct CompletionStepView: View {
     let onComplete: () -> Void
-    @State private var scale: CGFloat = 0.7
+    @State private var scale: CGFloat = 0.6
     @State private var opacity: Double = 0
-    @State private var glowScale: CGFloat = 0.6
+    @State private var glowScale: CGFloat = 0.5
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 32) {
             ZStack {
-                Circle()
-                    .fill(Color.green.opacity(0.12))
-                    .frame(width: 90, height: 90)
-                    .scaleEffect(glowScale)
+                GradientOrbView()
 
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 52))
+                    .font(.system(size: 56))
                     .foregroundColor(.green)
-                    .shadow(color: .green.opacity(0.3), radius: 10, x: 0, y: 4)
+                    .shadow(color: .green.opacity(0.35), radius: 14, x: 0, y: 5)
+                    .scaleEffect(glowScale)
             }
             .scaleEffect(scale)
             .opacity(opacity)
 
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 Text("You're all set!")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
+                    .tracking(0.3)
 
                 Text("Press ⌘Space to start searching.")
                     .font(.system(size: 14, weight: .medium, design: .rounded))
@@ -329,20 +402,22 @@ struct CompletionStepView: View {
             }
             .buttonStyle(OnboardingButtonStyle())
             .opacity(opacity)
+            .scaleEffect(scale)
         }
         .padding(.horizontal, 36)
         .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.7)) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.68)) {
                 scale = 1.0
                 opacity = 1.0
             }
-            withAnimation(.easeOut(duration: 0.7).delay(0.1)) {
+            withAnimation(.easeOut(duration: 0.8).delay(0.1)) {
                 glowScale = 1.0
             }
         }
     }
 }
 
+// MARK: - Permission Row
 struct PermissionRow: View {
     let icon: String
     let iconColor: Color
@@ -358,13 +433,13 @@ struct PermissionRow: View {
             Image(systemName: icon)
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundColor(iconColor)
-                .frame(width: 40, height: 40)
+                .frame(width: 42, height: 42)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(iconColor.opacity(0.12))
                         .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(iconColor.opacity(0.18), lineWidth: 1)
+                                .stroke(iconColor.opacity(0.22), lineWidth: 1)
                         )
                 )
 
@@ -374,14 +449,14 @@ struct PermissionRow: View {
                     .foregroundColor(.primary)
                 Text(subtitle)
                     .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(.secondary.opacity(0.75))
             }
 
             Spacer()
 
             if isGranted {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 22))
+                    .font(.system(size: 24))
                     .foregroundColor(.green)
                     .transition(.scale.combined(with: .opacity))
             } else {
@@ -399,9 +474,11 @@ struct PermissionRow: View {
                 .fill(Color.secondary.opacity(hover ? 0.08 : 0.04))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.white.opacity(hover ? 0.12 : 0.06), lineWidth: 1)
+                        .stroke(Color.white.opacity(hover ? 0.14 : 0.06), lineWidth: 1)
                 )
         )
+        .scaleEffect(hover ? 1.01 : 1.0)
+        .animation(.easeOut(duration: 0.12), value: hover)
         .onHover { h in
             withAnimation(.easeInOut(duration: 0.15)) {
                 hover = h
@@ -469,8 +546,8 @@ struct OnboardingButtonStyle: ButtonStyle {
                             )
                     )
             )
-            .opacity(configuration.isPressed ? 0.75 : 1.0)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
