@@ -20,7 +20,7 @@ final class UpdateManager: ObservableObject {
 
     // MARK: - Public API
 
-    func checkForUpdates() {
+    func checkForUpdates(showAnyway: Bool = false) {
         guard !isChecking else { return }
         isChecking = true
         showAlert = false
@@ -52,26 +52,25 @@ final class UpdateManager: ObservableObject {
                     return
                 }
 
-                // Skip if we already prompted for this exact release
                 let lastPrompted = UserDefaults.standard.string(forKey: self.lastPromptedTagKey)
-                if tagName == lastPrompted {
+                if !showAnyway, tagName == lastPrompted {
                     self.finishCheck()
                     return
                 }
 
-                // Find DMG asset
                 self.findDMGAsset(in: json)
 
-                // Populate alert info
                 let version = tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
                 self.alertVersion = version
                 self.alertReleaseNotes = json["body"] as? String ?? ""
                 self.showAlert = true
 
-                // Remember we prompted for this tag
                 UserDefaults.standard.set(tagName, forKey: self.lastPromptedTagKey)
 
                 self.finishCheck()
+
+                // Show independent modal window — not tied to search panel
+                ChangelogWindowController.shared.showAnimated()
             }
         }.resume()
     }
@@ -83,7 +82,7 @@ final class UpdateManager: ObservableObject {
         }
 
         statusMessage = "Downloading update..."
-        showAlert = false
+        ChangelogWindowController.shared.dismissAnimated()
 
         let tempDir = FileManager.default.temporaryDirectory
         let dmgPath = tempDir.appendingPathComponent("Snything-Update.dmg")
@@ -114,6 +113,7 @@ final class UpdateManager: ObservableObject {
 
     func skipUpdate() {
         showAlert = false
+        ChangelogWindowController.shared.dismissAnimated()
     }
 
     // MARK: - Private
