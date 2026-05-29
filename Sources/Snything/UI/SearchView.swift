@@ -13,17 +13,26 @@ struct SearchView: View {
             resultsColumn
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if coordinator.showPreview, let previewResult = coordinator.previewResult {
+            if coordinator.showPreview {
                 Divider()
                     .background(Color.white.opacity(0.08))
                     .padding(.horizontal, 12)
 
-                PreviewView(result: previewResult)
-                    .frame(maxWidth: 340, maxHeight: .infinity)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .trailing).combined(with: .opacity)
-                    ))
+                if coordinator.showingClipboard, let clipItem = coordinator.clipboardPreviewItem {
+                    ClipboardPreviewView(item: clipItem)
+                        .frame(maxWidth: 340, maxHeight: .infinity)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                } else if let previewResult = coordinator.previewResult {
+                    PreviewView(result: previewResult)
+                        .frame(maxWidth: 340, maxHeight: .infinity)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        ))
+                }
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: coordinator.showPreview)
