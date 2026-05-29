@@ -16,9 +16,6 @@ struct PreviewView: View {
             case .code:
                 CodePreviewView(url: result.url)
                     .id(result.url)
-            case .calculation, .command, .webSearch:
-                ActionPreviewView(result: result)
-                    .id(result.id)
             default:
                 GenericPreviewView(result: result)
                     .id(result.id)
@@ -773,9 +770,6 @@ struct GenericPreviewView: View {
         case .audio: return "music.note"
         case .document: return "doc.fill"
         case .archive: return "archivebox.fill"
-        case .calculation: return "equal.circle.fill"
-        case .command: return "terminal.fill"
-        case .webSearch: return "magnifyingglass.circle.fill"
         default: return "doc.fill"
         }
     }
@@ -787,9 +781,6 @@ struct GenericPreviewView: View {
         case .audio: return .orange
         case .document: return .cyan
         case .archive: return .gray
-        case .calculation: return .yellow
-        case .command: return .green
-        case .webSearch: return .accentColor
         default: return .secondary
         }
     }
@@ -863,87 +854,4 @@ enum SyntaxHighlighter {
     }
 }
 
-// MARK: - Action Preview (Calculator / Command / Web Search)
 
-struct ActionPreviewView: View {
-    let result: SearchResult
-
-    var body: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(iconColor.opacity(0.12))
-                    .frame(width: 72, height: 72)
-                Image(systemName: iconName)
-                    .font(.system(size: 32))
-                    .foregroundColor(iconColor)
-            }
-            .padding(.top, 40)
-
-            VStack(spacing: 6) {
-                Text(result.name)
-                    .font(.system(size: 17, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.center)
-                Text(result.subtitle)
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-
-            HStack(spacing: 6) {
-                Image(systemName: "return")
-                    .font(.system(size: 10, weight: .bold))
-                Text(actionLabel)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-            }
-            .foregroundColor(.accentColor)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.08))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
-                    )
-            )
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.secondary.opacity(0.04))
-        .cornerRadius(12)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    private var iconName: String {
-        switch result.kind {
-        case .calculation: return "equal.circle.fill"
-        case .command: return "terminal.fill"
-        case .webSearch: return "magnifyingglass.circle.fill"
-        default: return "bolt.fill"
-        }
-    }
-
-    private var iconColor: Color {
-        switch result.kind {
-        case .calculation: return .yellow
-        case .command: return .green
-        case .webSearch: return .accentColor
-        default: return .secondary
-        }
-    }
-
-    private var actionLabel: String {
-        switch result.actionType {
-        case .pasteText: return "Paste Result"
-        case .runShell: return "Run Command"
-        case .openURL: return "Open in Browser"
-        default: return "Execute"
-        }
-    }
-}
