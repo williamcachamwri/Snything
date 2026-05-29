@@ -26,12 +26,19 @@ struct ResultListView: View {
                             }
                             coordinator.openSelected()
                         }
+                        .onHover { hover in
+                            if hover {
+                                withAnimation(.easeOut(duration: 0.08)) {
+                                    coordinator.selectedIndex = index
+                                }
+                            }
+                        }
                     }
                 }
                 .padding(.vertical, 4)
             }
             .background(Color.clear)
-            .onChange(of: coordinator.selectedIndex) { oldValue, newValue in
+            .onChange(of: coordinator.selectedIndex) { _, newValue in
                 if coordinator.results.indices.contains(newValue) {
                     withAnimation(.easeOut(duration: 0.12)) {
                         proxy.scrollTo(coordinator.results[newValue].id, anchor: .center)
