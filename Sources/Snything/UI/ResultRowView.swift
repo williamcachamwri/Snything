@@ -73,12 +73,8 @@ struct ResultRowView: View {
                 .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
         )
         .contentShape(Rectangle())
+        .id(result.id)
         .onAppear {
-            if result.actionType == .openFile {
-                loadIcon()
-            }
-        }
-        .onChange(of: result.url) { _, _ in
             if result.actionType == .openFile {
                 loadIcon()
             }

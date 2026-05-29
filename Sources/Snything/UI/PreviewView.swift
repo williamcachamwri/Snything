@@ -869,18 +869,18 @@ struct ActionPreviewView: View {
     let result: SearchResult
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
+        VStack(spacing: 16) {
             ZStack {
                 Circle()
                     .fill(iconColor.opacity(0.12))
-                    .frame(width: 90, height: 90)
+                    .frame(width: 72, height: 72)
                 Image(systemName: iconName)
-                    .font(.system(size: 40))
+                    .font(.system(size: 32))
                     .foregroundColor(iconColor)
             }
+            .padding(.top, 40)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text(result.name)
                     .font(.system(size: 17, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
@@ -911,7 +911,7 @@ struct ActionPreviewView: View {
 
             Spacer()
         }
-        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.secondary.opacity(0.04))
         .cornerRadius(12)
         .overlay(
