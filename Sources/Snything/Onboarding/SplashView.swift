@@ -45,22 +45,23 @@ struct SplashView: View {
                                 center: .center
                             )
                         )
-                        .frame(width: 130, height: 130)
+                        .frame(width: 150, height: 150)
                         .scaleEffect(orbScale)
                         .opacity(orbOpacity)
-                        .blur(radius: 24)
+                        .blur(radius: 28)
 
                     // Custom App Icon Logo
                     if let icon = Bundle.module.image(forResource: "AppIcon") {
                         Image(nsImage: icon)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(width: 72, height: 72)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
+                            .frame(width: 88, height: 88)
+                            .compositingGroup()
+                            .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
+                            .shadow(color: .black.opacity(0.22), radius: 14, x: 0, y: 5)
                     } else {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 38, weight: .bold, design: .rounded))
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: [.accentColor, .cyan],
