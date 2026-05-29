@@ -1,24 +1,22 @@
 import Foundation
 import AppKit
-import os
 
-/// Ultra-fast search engine using Spotlight (mdfind) as the primary source.
-/// Spotlight already indexes every file on the Mac — no custom indexing needed.
-/// Memory-safe: mdfind runs as a subprocess; results stream through a Pipe.
-/// No long-lived memory buffers; NSCache is capped at 50 entries / 5MB.
+/// Ultra-fast parallel search engine using Spotlight (mdfind) as the primary source.
+/// Phase 1 (mdfind name) and Phase 2 (mdfind content) run in parallel via TaskGroup.
+/// App cache fuzzy runs concurrently. Results are merged, deduplicated, and ranked.
 final class FastSearchEngine: @unchecked Sendable {
     static let shared = FastSearchEngine()
 
     private var currentTask: Task<Void, Never>?
-    private var mdfindProcess: Process?
-    private let processLock = OSAllocatedUnfairLock<Void>(initialState: ())
+    private var activeProcesses = Set<Process>()
+    private let processLock = NSLock()
 
     private let cache = NSCache<NSString, NSArray>()
-    private let cacheLock = OSAllocatedUnfairLock<Void>(initialState: ())
+    private let cacheLock = NSLock()
 
     private var appCache: [SearchResult] = []
     private var appCacheLoaded = false
-    private let appCacheLock = OSAllocatedUnfairLock<Void>(initialState: ())
+    private let appCacheLock = NSLock()
 
     private init() {
         cache.countLimit = 50
@@ -27,9 +25,9 @@ final class FastSearchEngine: @unchecked Sendable {
 
     // MARK: - Entry Point
 
-    func search(query: String, maxResults: Int = 200, onBatch: @escaping @Sendable ([SearchResult]) -> Void) {
+    func search(query: String, maxResults: Int = 500, onBatch: @escaping @Sendable ([SearchResult]) -> Void) {
         currentTask?.cancel()
-        cancel()
+        cancelProcesses()
 
         let task = Task {
             let cacheKey = "\(query)_\(maxResults)" as NSString
@@ -44,25 +42,43 @@ final class FastSearchEngine: @unchecked Sendable {
                 return
             }
 
+            // Phase 1: Spotlight name search (async)
+            // Phase 2: Cached apps fuzzy (async) 
+            // Phase 3: Spotlight content search (async, only if query >= 8 chars)
+            // All three run in parallel via TaskGroup
+            let startTime = Date()
             var allResults: [SearchResult] = []
 
-            // Phase 1: Spotlight mdfind — PRIMARY. Searches EVERYWHERE on the Mac.
-            // Spotlight's index is always up-to-date, comprehensive, and fast.
-            async let mdfindNameResults = self.runMdfind(query: q, maxResults: maxResults)
-            let mdfind = await mdfindNameResults
-            allResults.append(contentsOf: mdfind)
+            await withTaskGroup(of: [SearchResult].self) { group in
+                // Thread 1: Spotlight name search — PRIMARY, covers EVERY file on Mac
+                group.addTask {
+                    await self.runMdfindName(query: q, maxResults: maxResults)
+                }
 
-            // Phase 3: Cached apps (fuzzy from RAM, covers app display names mdfind might miss)
-            let appResults = await self.scanApplications(query: q, maxResults: maxResults)
-            allResults.append(contentsOf: appResults)
+                // Thread 2: App cache fuzzy — covers display names Spotlight might miss
+                group.addTask {
+                    await self.scanApplications(query: q, maxResults: 100)
+                }
 
-            // Phase 4: Content search — very limited, only for long queries
-            if q.count >= 8 {
-                let content = await self.runContentSearch(query: q, maxResults: 2)
-                allResults.append(contentsOf: content)
+                // Thread 3: Content search — only for long queries, heavily limited
+                if q.count >= 8 {
+                    group.addTask {
+                        await self.runMdfindContent(query: q, maxResults: 5)
+                    }
+                }
+
+                for await results in group {
+                    if Task.isCancelled { break }
+                    allResults.append(contentsOf: results)
+                }
             }
 
-            // Deduplicate by path + sort by score
+            guard !Task.isCancelled else {
+                await MainActor.run { onBatch([]) }
+                return
+            }
+
+            // Deduplicate by path + sort by relevance
             var seen = Set<String>()
             var unique: [SearchResult] = []
             unique.reserveCapacity(min(allResults.count, maxResults))
@@ -73,6 +89,11 @@ final class FastSearchEngine: @unchecked Sendable {
                 }
             }
 
+            let elapsed = Date().timeIntervalSince(startTime)
+            if elapsed > 0.5 {
+                print("[Search] slow query '\(q)' took \(String(format: "%.2f", elapsed))s, \(unique.count) results")
+            }
+
             self.setCache(key: cacheKey, results: unique)
             await MainActor.run { onBatch(unique) }
         }
@@ -81,41 +102,40 @@ final class FastSearchEngine: @unchecked Sendable {
 
     func cancel() {
         currentTask?.cancel()
-        processLock.withLock { _ in
-            mdfindProcess?.terminate()
-            mdfindProcess = nil
-        }
+        cancelProcesses()
     }
 
-    // MARK: - Spotlight (name search — everywhere on the Mac)
+    // MARK: - Spotlight Name Search (primary, most important)
 
-    private func runMdfind(query: String, maxResults: Int) async -> [SearchResult] {
+    private func runMdfindName(query: String, maxResults: Int) async -> [SearchResult] {
         let escaped = escapeForPredicate(query)
+        let pred = "kMDItemDisplayName == '*\(escaped)*'cd || kMDItemFSName == '*\(escaped)*'cd"
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        // Search EVERYWHERE Spotlight has indexed (no -onlyin restriction)
-        // cd = case/diacritic insensitive
-        let pred = "kMDItemDisplayName == '*\(escaped)*'cd || kMDItemFSName == '*\(escaped)*'cd"
         process.arguments = [pred]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
 
-        processLock.withLock { _ in mdfindProcess = process }
+        processLock.lock()
+        activeProcesses.insert(process)
+        processLock.unlock()
         defer {
-            processLock.withLock { _ in
-                if mdfindProcess === process { mdfindProcess = nil }
-            }
+            processLock.lock()
+            activeProcesses.remove(process)
+            processLock.unlock()
         }
 
-        do { try process.run() } catch { return [] }
+        do {
+            try process.run()
+        } catch { return [] }
 
-        // Read data with a reasonable timeout to avoid hanging on huge results
+        // Read with timeout — if cancelled, kill the process immediately
         let data: Data
         do {
             data = try await withCheckedThrowingContinuation { continuation in
-                DispatchQueue.global().async {
+                DispatchQueue.global(qos: .userInitiated).async {
                     let d = pipe.fileHandleForReading.readDataToEndOfFile()
                     continuation.resume(returning: d)
                 }
@@ -128,15 +148,15 @@ final class FastSearchEngine: @unchecked Sendable {
         process.waitUntilExit()
         guard !Task.isCancelled else { return [] }
 
-        let paths = String(data: data, encoding: .utf8)?
+        let rawPaths = String(data: data, encoding: .utf8)?
             .components(separatedBy: .newlines)
-            .filter { !$0.isEmpty }
-            .prefix(maxResults) ?? []
+            .filter { !$0.isEmpty } ?? []
 
         let fm = FileManager.default
         var results: [SearchResult] = []
-        results.reserveCapacity(min(paths.count, maxResults))
+        results.reserveCapacity(min(rawPaths.count, maxResults))
 
+        let paths = rawPaths.prefix(maxResults)
         for path in paths {
             guard !Task.isCancelled else { break }
             let url = URL(fileURLWithPath: String(path))
@@ -145,47 +165,47 @@ final class FastSearchEngine: @unchecked Sendable {
                 url: url, name: url.lastPathComponent, path: url.path,
                 kind: SearchResult.kind(from: url),
                 size: url.fileSize(), modifiedDate: url.modDate(),
-                relevanceScore: 2.0
+                relevanceScore: 10.0
             ))
         }
         return results
     }
 
-    // MARK: - Content Search
+    // MARK: - Spotlight Content Search (limited, parallel)
 
-    private func runContentSearch(query: String, maxResults: Int) async -> [SearchResult] {
+    private func runMdfindContent(query: String, maxResults: Int) async -> [SearchResult] {
         let escaped = escapeForPredicate(query)
+        let pred = "kMDItemTextContent == '*\(escaped)*'cd"
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        let pred = "kMDItemTextContent == '*\(escaped)*'cd"
         process.arguments = [pred]
         let pipe = Pipe()
         process.standardOutput = pipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
 
-        processLock.withLock { _ in mdfindProcess = process }
+        processLock.lock()
+        activeProcesses.insert(process)
+        processLock.unlock()
         defer {
-            processLock.withLock { _ in
-                if mdfindProcess === process { mdfindProcess = nil }
-            }
+            processLock.lock()
+            activeProcesses.remove(process)
+            processLock.unlock()
         }
 
         do { try process.run() } catch { return [] }
+
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-
         guard !Task.isCancelled else { return [] }
 
-        let paths = String(data: data, encoding: .utf8)?
+        let rawPaths = String(data: data, encoding: .utf8)?
             .components(separatedBy: .newlines)
-            .filter { !$0.isEmpty }
-            .prefix(maxResults) ?? []
+            .filter { !$0.isEmpty } ?? []
 
         let fm = FileManager.default
         var results: [SearchResult] = []
-        results.reserveCapacity(min(paths.count, maxResults))
-
+        let paths = rawPaths.prefix(maxResults)
         for path in paths {
             guard !Task.isCancelled else { break }
             let url = URL(fileURLWithPath: String(path))
@@ -194,18 +214,16 @@ final class FastSearchEngine: @unchecked Sendable {
                 url: url, name: url.lastPathComponent, path: url.path,
                 kind: SearchResult.kind(from: url),
                 size: url.fileSize(), modifiedDate: url.modDate(),
-                relevanceScore: 0.05,
+                relevanceScore: 0.5,
                 subtitle: "Content match"
             ))
         }
         return results
     }
 
-    // MARK: - Predicate Escaping (only ' and \ can break the string literal)
+    // MARK: - Predicate Escaping
 
     private func escapeForPredicate(_ raw: String) -> String {
-        // mdfind predicates use single-quoted strings.
-        // Only \ and ' need escaping inside single quotes.
         return raw
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "'", with: "\\'")
@@ -214,32 +232,38 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Applications
 
     private func ensureAppCache() {
-        appCacheLock.withLock { _ in
-            guard !appCacheLoaded else { return }
-            let dirs = ["/Applications", "/System/Applications", "\(NSHomeDirectory())/Applications"]
-            let fm = FileManager.default
-            var apps: [SearchResult] = []
-            for dir in dirs {
-                guard let urls = try? fm.contentsOfDirectory(at: URL(fileURLWithPath: dir), includingPropertiesForKeys: nil) else { continue }
-                for url in urls where url.pathExtension == "app" {
-                    let name = appDisplayName(for: url)
-                    apps.append(SearchResult(
-                        url: url, name: name, path: url.path,
-                        kind: .application, size: nil, modifiedDate: nil,
-                        relevanceScore: 0,
-                        subtitle: url.deletingLastPathComponent().path
-                    ))
-                }
+        appCacheLock.lock()
+        defer { appCacheLock.unlock() }
+        guard !appCacheLoaded else { return }
+
+        let dirs = ["/Applications", "/System/Applications", "\(NSHomeDirectory())/Applications"]
+        let fm = FileManager.default
+        var apps: [SearchResult] = []
+        for dir in dirs {
+            guard let urls = try? fm.contentsOfDirectory(
+                at: URL(fileURLWithPath: dir),
+                includingPropertiesForKeys: nil
+            ) else { continue }
+            for url in urls where url.pathExtension == "app" {
+                let name = appDisplayName(for: url)
+                apps.append(SearchResult(
+                    url: url, name: name, path: url.path,
+                    kind: .application, size: nil, modifiedDate: nil,
+                    relevanceScore: 0,
+                    subtitle: url.deletingLastPathComponent().path
+                ))
             }
-            appCache = apps
-            appCacheLoaded = true
         }
+        appCache = apps
+        appCacheLoaded = true
     }
 
     private func scanApplications(query: String, maxResults: Int) async -> [SearchResult] {
         ensureAppCache()
         var cached: [SearchResult] = []
-        appCacheLock.withLock { _ in cached = appCache }
+        appCacheLock.lock()
+        cached = appCache
+        appCacheLock.unlock()
 
         let q = query.lowercased()
         var results: [SearchResult] = []
@@ -268,20 +292,31 @@ final class FastSearchEngine: @unchecked Sendable {
         return url.deletingPathExtension().lastPathComponent
     }
 
-    // MARK: - Cache
+    // MARK: - Process Control
 
-    private func cachedResults(for key: NSString) -> [SearchResult]? {
-        cacheLock.withLock {
-            cache.object(forKey: key) as? [SearchResult]
+    private func cancelProcesses() {
+        processLock.lock()
+        let procs = Array(activeProcesses)
+        activeProcesses.removeAll()
+        processLock.unlock()
+        for proc in procs {
+            proc.terminate()
         }
     }
 
+    // MARK: - Cache
+
+    private func cachedResults(for key: NSString) -> [SearchResult]? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return cache.object(forKey: key) as? [SearchResult]
+    }
+
     private func setCache(key: NSString, results: [SearchResult]) {
-        cacheLock.withLock {
-            // Approximate cost: 1KB per result for cache eviction
-            let cost = results.count * 1024
-            cache.setObject(results as NSArray, forKey: key, cost: cost)
-        }
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        let cost = results.count * 1024
+        cache.setObject(results as NSArray, forKey: key, cost: cost)
     }
 }
 
