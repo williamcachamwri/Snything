@@ -281,6 +281,10 @@ struct SearchSettingsView: View {
 
 // MARK: - About Settings
 struct AboutSettingsView: View {
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             AppLogoImage(size: 56)
@@ -290,7 +294,7 @@ struct AboutSettingsView: View {
                 Text("Snything")
                     .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
-                Text("Version 1.0.0")
+                Text("Version \(appVersion)")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
             }
