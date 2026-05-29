@@ -84,6 +84,22 @@ To create a release DMG:
 
 The DMG will be produced at `.build/Snything-Release.dmg`.
 
+## First Launch (Downloaded DMG)
+
+Because Snything is distributed without a paid Apple Developer ID certificate, macOS Gatekeeper will show a security warning on the first launch after downloading from GitHub.
+
+**To open the app:**
+
+1. Drag `Snything.app` from the DMG into `/Applications`.
+2. **Right-click** (or Control-click) the app and select **Open**.
+3. Click **Open** in the dialog. The app will launch normally from then on.
+
+**Or use Terminal:**
+```bash
+xattr -dr com.apple.quarantine /Applications/Snything.app
+open /Applications/Snything.app
+```
+
 ## Requirements
 
 - macOS 14.0+
