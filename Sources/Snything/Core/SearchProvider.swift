@@ -32,7 +32,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         let newPaths = recents.map(\.path)
         let currentPaths = results.map(\.path)
         guard newPaths != currentPaths else { return }
-        withAnimation(.none) {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
             results = recents
             showingRecents = true
             selectedIndex = 0
