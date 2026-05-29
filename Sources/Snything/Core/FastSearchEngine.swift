@@ -16,12 +16,6 @@ final class FastSearchEngine: @unchecked Sendable {
     private var appCacheLoaded = false
     private let appCacheLock = OSAllocatedUnfairLock<Void>(initialState: ())
 
-    private let excludedPaths: Set<String> = [
-        "/System/Volumes", "/Volumes", "/.Spotlight-V100", "/.Trashes",
-        "/private/var/db", "/private/var/vm", "/dev", "/net", "/home",
-        "/usr", "/bin", "/sbin", "/lib"
-    ]
-
     private let commandMap: [(name: String, desc: String, payload: String)] = [
         ("quit", "Quit Snything", "__QUIT__"),
         ("lock screen", "Lock Screen", "pmset displaysleepnow"),
@@ -53,64 +47,44 @@ final class FastSearchEngine: @unchecked Sendable {
                 return
             }
 
-            let safeQuery = q.replacingOccurrences(of: "\"", with: "")
-
-            // Phase 1: Instant synchronous results (calculator, commands, web)
+            // Phase 1: Instant sync results
             var allResults: [SearchResult] = []
             allResults.append(contentsOf: self.evaluateCalculator(query: q))
             allResults.append(contentsOf: self.builtInCommands(query: q))
             allResults.append(contentsOf: self.webSearches(query: q))
 
-            // Phase 2: Parallel async (apps, filesystem, spotlight name)
-            async let appResults = self.scanApplications(query: q, maxResults: maxResults)
-            async let fsResults = self.runFileSystemSearch(query: safeQuery, maxResults: maxResults / 2)
-            async let spotResults = self.runMdfind(query: safeQuery, maxResults: maxResults)
+            // Phase 2: Fast in-memory index (no filesystem I/O)
+            let indexResults = FileIndex.shared.search(query: q, maxResults: maxResults)
+            allResults.append(contentsOf: indexResults)
 
-            let apps = await appResults
-            let fs = await fsResults
+            // Phase 3: Cached apps (fuzzy from RAM)
+            let appResults = await self.scanApplications(query: q, maxResults: maxResults)
+            allResults.append(contentsOf: appResults)
+
+            // Phase 4: Spotlight for deep system files (async, capped)
+            async let spotResults = self.runMdfind(query: q, maxResults: maxResults / 2)
             let spot = await spotResults
-
-            allResults.append(contentsOf: apps)
-            allResults.append(contentsOf: fs)
             allResults.append(contentsOf: spot)
 
-            // Phase 3: Content search (sequential after name search, only for longer queries)
+            // Phase 5: Content search (only for longer queries, low priority)
             if q.count >= 3 {
-                let content = await self.runContentSearch(query: safeQuery, maxResults: 20)
+                let content = await self.runContentSearch(query: q, maxResults: 15)
                 allResults.append(contentsOf: content)
             }
 
-            // Score everything with fuzzy + source bonuses
-            let scored = allResults.map { r in
-                var s = FuzzyMatcher.score(query: q, candidate: r.name)
-                s += r.relevanceScore
-                if r.kind == .application { s += 5 }
-                return SearchResult(
-                    url: r.url, name: r.name, path: r.path,
-                    kind: r.kind, size: r.size, modifiedDate: r.modifiedDate,
-                    relevanceScore: s,
-                    subtitle: r.subtitle,
-                    actionType: r.actionType,
-                    actionPayload: r.actionPayload
-                )
-            }
-
-            // Deduplicate by path/id
+            // Deduplicate + sort
             var seen = Set<String>()
             var unique: [SearchResult] = []
-            unique.reserveCapacity(scored.count)
-            for r in scored {
+            unique.reserveCapacity(allResults.count)
+            for r in allResults.sorted(by: { $0.relevanceScore > $1.relevanceScore }) {
                 if seen.insert(r.id).inserted {
                     unique.append(r)
+                    if unique.count >= maxResults { break }
                 }
             }
 
-            let sorted = Array(unique.sorted { $0.relevanceScore > $1.relevanceScore }.prefix(maxResults))
-            self.setCache(key: cacheKey, results: sorted)
-
-            await MainActor.run {
-                onBatch(sorted)
-            }
+            self.setCache(key: cacheKey, results: unique)
+            await MainActor.run { onBatch(unique) }
         }
         currentTask = task
     }
@@ -123,12 +97,24 @@ final class FastSearchEngine: @unchecked Sendable {
         }
     }
 
-    // MARK: - Spotlight (name)
+    // MARK: - Spotlight
 
     private func runMdfind(query: String, maxResults: Int) async -> [SearchResult] {
+        // Escape special characters for mdfind predicate
+        let escaped = query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "*", with: "\\*")
+            .replacingOccurrences(of: "?", with: "\\?")
+            .replacingOccurrences(of: "+", with: "\\+")
+            .replacingOccurrences(of: "-", with: "\\-")
+            .replacingOccurrences(of: "&", with: "\\&")
+            .replacingOccurrences(of: "|", with: "\\|")
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        let pred = "kMDItemDisplayName == '*\(query)*'cd || kMDItemFSName == '*\(query)*'cd"
+        let pred = "kMDItemDisplayName == '*\(escaped)*'cd || kMDItemFSName == '*\(escaped)*'cd"
         process.arguments = [pred, "-onlyin", NSHomeDirectory()]
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -173,9 +159,17 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Content Search
 
     private func runContentSearch(query: String, maxResults: Int) async -> [SearchResult] {
+        let escaped = query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "*", with: "\\*")
+            .replacingOccurrences(of: "?", with: "\\?")
+            .replacingOccurrences(of: "+", with: "\\+")
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        let pred = "kMDItemTextContent == '*\(query)*'cd"
+        let pred = "kMDItemTextContent == '*\(escaped)*'cd"
         process.arguments = [pred, "-onlyin", NSHomeDirectory()]
         let pipe = Pipe()
         process.standardOutput = pipe
@@ -215,70 +209,6 @@ final class FastSearchEngine: @unchecked Sendable {
                 subtitle: "Found in content",
                 actionType: .openFile, actionPayload: ""
             ))
-        }
-        return results
-    }
-
-    // MARK: - FileSystem
-
-    private func runFileSystemSearch(query: String, maxResults: Int) async -> [SearchResult] {
-        let lowerQ = query.lowercased()
-        let showHidden = SettingsManager.shared.showHiddenFiles
-        var targets = SettingsManager.shared.searchScopes
-        let home = NSHomeDirectory()
-        let common = [home, "/Applications", "/System/Applications", "/Users"]
-        for c in common where !targets.contains(c) { targets.append(c) }
-
-        return await withTaskGroup(of: [SearchResult].self) { group in
-            for target in targets {
-                group.addTask {
-                    guard !Task.isCancelled else { return [] }
-                    return self.shallowScan(at: target, query: lowerQ, maxResults: maxResults, showHidden: showHidden)
-                }
-            }
-            var all: [SearchResult] = []
-            for await batch in group {
-                all.append(contentsOf: batch)
-                if all.count >= maxResults { group.cancelAll() }
-            }
-            return Array(all.prefix(maxResults))
-        }
-    }
-
-    private func shallowScan(at root: String, query: String, maxResults: Int, showHidden: Bool) -> [SearchResult] {
-        let fm = FileManager.default
-        var options: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants]
-        if !showHidden { options.insert(.skipsHiddenFiles) }
-        guard let enumerator = fm.enumerator(
-            at: URL(fileURLWithPath: root),
-            includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey],
-            options: options,
-            errorHandler: nil
-        ) else { return [] }
-
-        var results: [SearchResult] = []
-        results.reserveCapacity(maxResults)
-
-        for case let url as URL in enumerator {
-            guard !Task.isCancelled else { break }
-            if results.count >= maxResults { break }
-
-            autoreleasepool {
-                let path = url.path
-                if self.shouldSkipPath(path) {
-                    enumerator.skipDescendants()
-                    return
-                }
-                let name = url.lastPathComponent.lowercased()
-                guard name.contains(query) || path.lowercased().contains(query) else { return }
-                let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                results.append(SearchResult(
-                    url: url, name: url.lastPathComponent, path: path,
-                    kind: isDir ? .folder : SearchResult.kind(from: url),
-                    size: url.fileSize(), modifiedDate: url.modDate(),
-                    relevanceScore: name.hasPrefix(query) ? 3.0 : 1.5
-                ))
-            }
         }
         return results
     }
@@ -342,10 +272,12 @@ final class FastSearchEngine: @unchecked Sendable {
         return url.deletingPathExtension().lastPathComponent
     }
 
-    // MARK: - Calculator
+    // MARK: - Calculator (safe, no crash on incomplete expressions)
 
     private func evaluateCalculator(query: String) -> [SearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 3 else { return [] }
+
         let hasDigits = trimmed.rangeOfCharacter(from: .decimalDigits) != nil
         let ops = CharacterSet(charactersIn: "+-*/().")
         let hasOp = trimmed.rangeOfCharacter(from: ops) != nil
@@ -354,15 +286,44 @@ final class FastSearchEngine: @unchecked Sendable {
         let letters = CharacterSet.letters
         guard trimmed.rangeOfCharacter(from: letters) == nil else { return [] }
 
+        // Validate expression pattern: only digits, operators, parentheses, dots
+        let validPattern = "^[0-9+\\-*/().\\s]+$"
+        guard trimmed.range(of: validPattern, options: .regularExpression) != nil else { return [] }
+
+        // Check for incomplete operators at end (e.g. "2+", "3*")
+        let lastChar = trimmed.last!
+        if "+-*/.".contains(lastChar) {
+            return []
+        }
+
+        // Check balanced parentheses
+        var parenCount = 0
+        for ch in trimmed {
+            if ch == "(" { parenCount += 1 }
+            else if ch == ")" { parenCount -= 1 }
+            if parenCount < 0 { return [] }
+        }
+        guard parenCount == 0 else { return [] }
+
+        // Check no consecutive operators (e.g. "2++2", "3*/4")
+        let consecutiveOpsPattern = "[+*\\-/]{2,}"
+        if trimmed.range(of: consecutiveOpsPattern, options: .regularExpression) != nil {
+            return []
+        }
+
+        // Safe evaluation with NSExpression
         let expr = NSExpression(format: trimmed)
         guard let value = expr.expressionValue(with: nil, context: nil) as? NSNumber else { return [] }
 
         let result = value.doubleValue
-        let resultStr = abs(result.truncatingRemainder(dividingBy: 1)) < 0.0001
-            ? String(Int(result))
-            : String(format: "%.4f", result)
+        let resultStr: String
+        if abs(result.truncatingRemainder(dividingBy: 1)) < 0.0001 {
+            resultStr = String(Int(result))
+        } else {
+            resultStr = String(format: "%.4f", result)
                 .replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
                 .replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+        }
 
         return [SearchResult(
             url: URL(fileURLWithPath: "/dev/null"),
@@ -425,7 +386,6 @@ final class FastSearchEngine: @unchecked Sendable {
             }
         }
 
-        // Fallback: always offer Google search for any query >= 2 chars
         guard query.count >= 2 else { return [] }
         let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlStr = "https://www.google.com/search?q=" + encoded
@@ -440,14 +400,7 @@ final class FastSearchEngine: @unchecked Sendable {
         )]
     }
 
-    // MARK: - Helpers
-
-    private func shouldSkipPath(_ path: String) -> Bool {
-        for excluded in excludedPaths {
-            if path.hasPrefix(excluded) { return true }
-        }
-        return false
-    }
+    // MARK: - Cache
 
     private func cachedResults(for key: NSString) -> [SearchResult]? {
         cacheLock.withLock {
