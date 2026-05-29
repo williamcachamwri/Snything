@@ -67,6 +67,6 @@ fi
 echo "Signing app bundle..."
 codesign --force --deep --sign - \
     --entitlements "Snything.entitlements" \
-    "${APP_BUNDLE}" 2>/dev/null || codesign --force --deep --sign - "${APP_BUNDLE}"
+    "${APP_BUNDLE}"
 
 echo "Done: ${APP_BUNDLE}"
