@@ -2,40 +2,37 @@ import SwiftUI
 import AppKit
 import QuartzCore
 
-final class SearchPanel: NSPanel {
+final class ChangelogPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     override var acceptsFirstResponder: Bool { true }
-    override var hidesOnDeactivate: Bool {
-        get { false }
-        set { }
-    }
 }
 
-final class SearchWindowController: NSWindowController {
-    init() {
-        let panel = SearchPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 780, height: 560),
+final class ChangelogWindowController: NSWindowController {
+    static let shared = ChangelogWindowController()
+
+    private init() {
+        let panel = ChangelogPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 580),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        panel.level = .floating
+        panel.level = .modalPanel
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
         panel.center()
-        panel.isMovableByWindowBackground = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.isMovableByWindowBackground = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.becomesKeyOnlyIfNeeded = false
-        panel.acceptsMouseMovedEvents = true
         panel.isReleasedWhenClosed = false
 
-        let hosting = NSHostingView(rootView: SearchContainerView())
-        hosting.frame = NSRect(x: 0, y: 0, width: 780, height: 560)
+        let hosting = NSHostingView(rootView: ChangelogContainerView())
+        hosting.frame = NSRect(x: 0, y: 0, width: 480, height: 580)
         hosting.autoresizingMask = [.width, .height]
         hosting.wantsLayer = true
-        hosting.layer?.cornerRadius = 20
+        hosting.layer?.cornerRadius = 24
         hosting.layer?.masksToBounds = true
         panel.contentView = hosting
 
@@ -47,70 +44,61 @@ final class SearchWindowController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // MARK: - Show
-
-    override func showWindow(_ sender: Any?) {
+    func showAnimated() {
         guard let window = window else { return }
         window.center()
         NSApp.activate(ignoringOtherApps: true)
 
         let layer = window.contentView?.layer
-
-        // Initial state: invisible, smaller, and slightly shifted down
         layer?.setValue(0.88, forKeyPath: "transform.scale.x")
         layer?.setValue(0.88, forKeyPath: "transform.scale.y")
-        layer?.setValue(24.0, forKeyPath: "transform.translation.y")
+        layer?.setValue(20.0, forKeyPath: "transform.translation.y")
         layer?.setValue(0.0, forKeyPath: "opacity")
         layer?.setValue(0.0, forKeyPath: "shadowOpacity")
 
-        window.makeKeyAndOrderFront(sender)
+        window.makeKeyAndOrderFront(nil)
 
-        // --- Scale X: snappy spring ---
         let springX = CASpringAnimation(keyPath: "transform.scale.x")
-        springX.mass = 0.55
-        springX.stiffness = 320
+        springX.mass = 0.5
+        springX.stiffness = 350
         springX.damping = 20
-        springX.initialVelocity = 10
+        springX.initialVelocity = 12
         springX.fromValue = 0.88
         springX.toValue = 1.0
         springX.duration = springX.settlingDuration
         springX.fillMode = .forwards
 
-        // --- Scale Y: slightly different mass for organic feel ---
         let springY = CASpringAnimation(keyPath: "transform.scale.y")
-        springY.mass = 0.6
-        springY.stiffness = 300
+        springY.mass = 0.55
+        springY.stiffness = 330
         springY.damping = 20
-        springY.initialVelocity = 10
+        springY.initialVelocity = 12
         springY.fromValue = 0.88
         springY.toValue = 1.0
         springY.duration = springY.settlingDuration
         springY.fillMode = .forwards
 
-        // --- Translate Y: slide up from below ---
         let slide = CASpringAnimation(keyPath: "transform.translation.y")
-        slide.mass = 0.6
-        slide.stiffness = 280
+        slide.mass = 0.5
+        slide.stiffness = 300
         slide.damping = 22
-        slide.initialVelocity = 8
-        slide.fromValue = 24.0
+        slide.initialVelocity = 10
+        slide.fromValue = 20.0
         slide.toValue = 0.0
         slide.duration = slide.settlingDuration
         slide.fillMode = .forwards
 
-        // --- Opacity: smooth fade in ---
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0.0
         fade.toValue = 1.0
-        fade.duration = 0.22
+        fade.duration = 0.25
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         fade.fillMode = .forwards
 
-        // --- Shadow opacity: shadow builds up with the scale ---
         let shadowFade = CABasicAnimation(keyPath: "shadowOpacity")
         shadowFade.fromValue = 0.0
-        shadowFade.toValue = 0.35
-        shadowFade.duration = 0.28
+        shadowFade.toValue = 0.4
+        shadowFade.duration = 0.32
         shadowFade.timingFunction = CAMediaTimingFunction(name: .easeOut)
         shadowFade.fillMode = .forwards
 
@@ -120,130 +108,75 @@ final class SearchWindowController: NSWindowController {
         layer?.add(fade, forKey: "fade")
         layer?.add(shadowFade, forKey: "shadowFade")
 
-        // Lock final values so they stick
         layer?.setValue(1.0, forKeyPath: "transform.scale.x")
         layer?.setValue(1.0, forKeyPath: "transform.scale.y")
         layer?.setValue(0.0, forKeyPath: "transform.translation.y")
         layer?.setValue(1.0, forKeyPath: "opacity")
-        layer?.setValue(0.35, forKeyPath: "shadowOpacity")
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
-            self.forceFocusSearchField()
-        }
+        layer?.setValue(0.4, forKeyPath: "shadowOpacity")
     }
 
-    // MARK: - Hide
-
-    func hideWindow() {
+    func dismissAnimated() {
         guard let window = window, let layer = window.contentView?.layer else { return }
 
-        // --- Opacity: fast fade out ---
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1.0
         fade.toValue = 0.0
-        fade.duration = 0.12
+        fade.duration = 0.15
         fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
         fade.fillMode = .forwards
 
-        // --- Scale: shrink slightly with more punch ---
         let shrinkX = CABasicAnimation(keyPath: "transform.scale.x")
         shrinkX.fromValue = 1.0
-        shrinkX.toValue = 0.94
-        shrinkX.duration = 0.12
+        shrinkX.toValue = 0.95
+        shrinkX.duration = 0.15
         shrinkX.timingFunction = CAMediaTimingFunction(name: .easeIn)
         shrinkX.fillMode = .forwards
 
         let shrinkY = CABasicAnimation(keyPath: "transform.scale.y")
         shrinkY.fromValue = 1.0
-        shrinkY.toValue = 0.94
-        shrinkY.duration = 0.12
+        shrinkY.toValue = 0.95
+        shrinkY.duration = 0.15
         shrinkY.timingFunction = CAMediaTimingFunction(name: .easeIn)
         shrinkY.fillMode = .forwards
 
-        // --- Slide down slightly as it disappears ---
         let slideDown = CABasicAnimation(keyPath: "transform.translation.y")
         slideDown.fromValue = 0.0
-        slideDown.toValue = 12.0
-        slideDown.duration = 0.12
+        slideDown.toValue = 16.0
+        slideDown.duration = 0.15
         slideDown.timingFunction = CAMediaTimingFunction(name: .easeIn)
         slideDown.fillMode = .forwards
-
-        // --- Shadow fades with the window ---
-        let shadowOut = CABasicAnimation(keyPath: "shadowOpacity")
-        shadowOut.fromValue = 0.35
-        shadowOut.toValue = 0.0
-        shadowOut.duration = 0.10
-        shadowOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
-        shadowOut.fillMode = .forwards
 
         layer.add(fade, forKey: "fadeOut")
         layer.add(shrinkX, forKey: "shrinkX")
         layer.add(shrinkY, forKey: "shrinkY")
         layer.add(slideDown, forKey: "slideDown")
-        layer.add(shadowOut, forKey: "shadowOut")
-
         layer.setValue(0.0, forKeyPath: "opacity")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.17) { [weak self] in
             window.orderOut(nil)
-            // Reset for next show
             layer.setValue(1.0, forKeyPath: "transform.scale.x")
             layer.setValue(1.0, forKeyPath: "transform.scale.y")
             layer.setValue(0.0, forKeyPath: "transform.translation.y")
             layer.setValue(1.0, forKeyPath: "opacity")
             layer.setValue(0.0, forKeyPath: "shadowOpacity")
+            self?.updateManager.showAlert = false
         }
     }
 
-    func toggleVisibility() {
-        guard let window = window else { return }
-        if window.isVisible {
-            hideWindow()
-        } else {
-            showWindow(nil)
-        }
-    }
-
-    private func forceFocusSearchField() {
-        guard let window = window else { return }
-        func findTextField(_ view: NSView) -> NSView? {
-            for subview in view.subviews {
-                if let tf = subview as? NSTextField { return tf }
-                if let found = findTextField(subview) { return found }
-            }
-            return nil
-        }
-        if let textField = findTextField(window.contentView!) {
-            window.makeFirstResponder(textField)
-        }
-    }
+    private var updateManager: UpdateManager { UpdateManager.shared }
 }
 
-struct VisualEffectMaterialView: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .hudWindow
-        view.blendingMode = .behindWindow
-        view.state = .active
-        view.wantsLayer = true
-        view.layer?.cornerRadius = 20
-        view.layer?.masksToBounds = true
-        return view
-    }
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) { }
-}
-
-struct SearchContainerView: View {
+struct ChangelogContainerView: View {
     var body: some View {
         ZStack {
             VisualEffectMaterialView()
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 24)
                         .stroke(
                             LinearGradient(
                                 gradient: Gradient(colors: [
                                     Color.white.opacity(0.22),
-                                    Color.white.opacity(0.06)
+                                    Color.white.opacity(0.05)
                                 ]),
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -251,7 +184,7 @@ struct SearchContainerView: View {
                             lineWidth: 1
                         )
                 )
-            SearchView()
+            ChangelogView()
         }
     }
 }

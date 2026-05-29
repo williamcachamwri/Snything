@@ -184,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdates() {
-        UpdateManager.shared.checkForUpdates()
+        UpdateManager.shared.checkForUpdates(showAnyway: true)
     }
 
     @objc private func quitApp() {
