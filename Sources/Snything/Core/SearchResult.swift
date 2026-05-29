@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct SearchResult: Identifiable, Hashable, Sendable {
-    let id = UUID()
+    var id: String { path }
     let url: URL
     let name: String
     let path: String
@@ -43,10 +43,10 @@ struct SearchResult: Identifiable, Hashable, Sendable {
     }
 
     func hash(into hasher: inout Hasher) {
-        hasher.combine(id)
+        hasher.combine(path)
     }
 
     static func == (lhs: SearchResult, rhs: SearchResult) -> Bool {
-        lhs.id == rhs.id
+        lhs.path == rhs.path
     }
 }
