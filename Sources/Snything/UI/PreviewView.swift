@@ -9,13 +9,16 @@ struct PreviewView: View {
             switch result.kind {
             case .folder:
                 FolderPreviewView(url: result.url)
-                    .id(result.url) // force rebuild on selection change
+                    .id(result.url)
             case .image:
                 ImagePreviewView(url: result.url)
                     .id(result.url)
             case .code:
                 CodePreviewView(url: result.url)
                     .id(result.url)
+            case .calculation, .command, .webSearch:
+                ActionPreviewView(result: result)
+                    .id(result.id)
             default:
                 GenericPreviewView(result: result)
                     .id(result.id)
@@ -734,7 +737,7 @@ struct GenericPreviewView: View {
                     .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundColor(.primary)
                     .multilineTextAlignment(.center)
-                Text(result.parentPath)
+                Text(result.subtitle.isEmpty ? result.parentPath : result.subtitle)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.7))
                     .lineLimit(2)
@@ -770,6 +773,9 @@ struct GenericPreviewView: View {
         case .audio: return "music.note"
         case .document: return "doc.fill"
         case .archive: return "archivebox.fill"
+        case .calculation: return "equal.circle.fill"
+        case .command: return "terminal.fill"
+        case .webSearch: return "magnifyingglass.circle.fill"
         default: return "doc.fill"
         }
     }
@@ -781,6 +787,9 @@ struct GenericPreviewView: View {
         case .audio: return .orange
         case .document: return .cyan
         case .archive: return .gray
+        case .calculation: return .yellow
+        case .command: return .green
+        case .webSearch: return .accentColor
         default: return .secondary
         }
     }
@@ -851,5 +860,90 @@ enum SyntaxHighlighter {
         let comments = "(//[^\\n]*|/\\*[\\s\\S]*?\\*/|#[^\\n]*)"
         let numbers = "\\b(0x[0-9a-fA-F]+|0b[01]+|0o[0-7]+|[0-9]+(\\.[0-9]+)?([eE][+-]?[0-9]+)?)\\b"
         return (commonKeywords, strings, comments, numbers)
+    }
+}
+
+// MARK: - Action Preview (Calculator / Command / Web Search)
+
+struct ActionPreviewView: View {
+    let result: SearchResult
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.12))
+                    .frame(width: 90, height: 90)
+                Image(systemName: iconName)
+                    .font(.system(size: 40))
+                    .foregroundColor(iconColor)
+            }
+
+            VStack(spacing: 8) {
+                Text(result.name)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+                Text(result.subtitle)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "return")
+                    .font(.system(size: 10, weight: .bold))
+                Text(actionLabel)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+            }
+            .foregroundColor(.accentColor)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color.accentColor.opacity(0.2), lineWidth: 1)
+                    )
+            )
+
+            Spacer()
+        }
+        .padding(.vertical, 24)
+        .background(Color.secondary.opacity(0.04))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private var iconName: String {
+        switch result.kind {
+        case .calculation: return "equal.circle.fill"
+        case .command: return "terminal.fill"
+        case .webSearch: return "magnifyingglass.circle.fill"
+        default: return "bolt.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch result.kind {
+        case .calculation: return .yellow
+        case .command: return .green
+        case .webSearch: return .accentColor
+        default: return .secondary
+        }
+    }
+
+    private var actionLabel: String {
+        switch result.actionType {
+        case .pasteText: return "Paste Result"
+        case .runShell: return "Run Command"
+        case .openURL: return "Open in Browser"
+        default: return "Execute"
+        }
     }
 }

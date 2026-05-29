@@ -96,12 +96,34 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func openSelected() {
         guard results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
-        NSWorkspace.shared.open(result.url)
+        switch result.actionType {
+        case .openFile:
+            NSWorkspace.shared.open(result.url)
+        case .openURL:
+            if let url = URL(string: result.actionPayload) {
+                NSWorkspace.shared.open(url)
+            }
+        case .runShell:
+            if result.actionPayload == "__QUIT__" {
+                NSApp.terminate(nil)
+            } else {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/bin/zsh")
+                task.arguments = ["-c", result.actionPayload]
+                try? task.run()
+            }
+        case .pasteText:
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(result.actionPayload, forType: .string)
+        case .none:
+            break
+        }
     }
 
     func revealSelected() {
         guard results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
+        guard result.actionType == .openFile else { return }
         NSWorkspace.shared.selectFile(result.url.path, inFileViewerRootedAtPath: "")
     }
 
