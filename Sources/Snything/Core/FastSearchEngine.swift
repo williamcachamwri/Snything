@@ -229,6 +229,124 @@ final class FastSearchEngine: @unchecked Sendable {
             .replacingOccurrences(of: "'", with: "\\'")
     }
 
+    // MARK: - Applications Search
+
+    func searchApplications(query: String, maxResults: Int = 200, onBatch: @escaping @Sendable ([SearchResult]) -> Void) {
+        currentTask?.cancel()
+        cancelProcesses()
+
+        let task = Task {
+            let q = query.trimmingCharacters(in: .whitespaces)
+            guard q.count <= 100 else {
+                await MainActor.run { onBatch([]) }
+                return
+            }
+
+            let qLower = q.lowercased()
+            var allResults: [SearchResult] = []
+
+            if q.isEmpty {
+                // Empty query: return all apps from cache (alphabetical)
+                allResults = await self.allApplications(maxResults: maxResults)
+            } else {
+                // Phase 1: mdfind for .app bundles by name
+                let mdfindResults = await self.runMdfindApps(query: q, maxResults: maxResults)
+                allResults.append(contentsOf: mdfindResults)
+
+                // Phase 2: app cache fuzzy for display names
+                let fuzzyResults = await self.scanApplications(query: qLower, maxResults: maxResults)
+                allResults.append(contentsOf: fuzzyResults)
+            }
+
+            guard !Task.isCancelled else {
+                await MainActor.run { onBatch([]) }
+                return
+            }
+
+            // Deduplicate by path + sort by relevance
+            var seen = Set<String>()
+            var unique: [SearchResult] = []
+            unique.reserveCapacity(min(allResults.count, maxResults))
+            for r in allResults.sorted(by: { $0.relevanceScore > $1.relevanceScore }) {
+                if seen.insert(r.id).inserted {
+                    unique.append(r)
+                    if unique.count >= maxResults { break }
+                }
+            }
+
+            await MainActor.run { onBatch(unique) }
+        }
+        currentTask = task
+    }
+
+    private func allApplications(maxResults: Int) async -> [SearchResult] {
+        ensureAppCache()
+        var cached: [SearchResult] = []
+        appCacheLock.lock()
+        cached = appCache
+        appCacheLock.unlock()
+
+        return cached
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .prefix(maxResults)
+            .map { app in
+                SearchResult(
+                    url: app.url, name: app.name, path: app.path,
+                    kind: .application, size: nil, modifiedDate: nil,
+                    relevanceScore: 1.0
+                )
+            }
+    }
+
+    private func runMdfindApps(query: String, maxResults: Int) async -> [SearchResult] {
+        let escaped = escapeForPredicate(query)
+        let pred = "kMDItemContentType == 'com.apple.application-bundle' && (kMDItemDisplayName == '*\(escaped)*'cd || kMDItemFSName == '*\(escaped)*'cd)"
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        process.arguments = [pred]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        processLock.lock()
+        activeProcesses.insert(process)
+        processLock.unlock()
+        defer {
+            processLock.lock()
+            activeProcesses.remove(process)
+            processLock.unlock()
+        }
+
+        do { try process.run() } catch { return [] }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard !Task.isCancelled else { return [] }
+
+        let rawPaths = String(data: data, encoding: .utf8)?
+            .components(separatedBy: .newlines)
+            .filter { !$0.isEmpty } ?? []
+
+        let fm = FileManager.default
+        var results: [SearchResult] = []
+        results.reserveCapacity(min(rawPaths.count, maxResults))
+        let paths = rawPaths.prefix(maxResults)
+
+        for path in paths {
+            guard !Task.isCancelled else { break }
+            let url = URL(fileURLWithPath: String(path))
+            guard fm.fileExists(atPath: url.path) else { continue }
+            let name = appDisplayName(for: url)
+            results.append(SearchResult(
+                url: url, name: name, path: url.path,
+                kind: .application, size: nil, modifiedDate: nil,
+                relevanceScore: 10.0
+            ))
+        }
+        return results
+    }
+
     // MARK: - Applications
 
     private func ensureAppCache() {

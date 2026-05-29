@@ -23,6 +23,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var showPreview: Bool = false
     @Published var previewResult: SearchResult? = nil
     @Published var showingRecents: Bool = false
+    @Published var showingApplications: Bool = false
     @Published var showingClipboard: Bool = false
 
     @Published var clipboardItems: [ClipboardItem] = []
@@ -42,12 +43,27 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
             results = recents
             showingRecents = true
+            showingApplications = false
             showingClipboard = false
             selectedIndex = 0
             keyboardFocusedIndex = 0
             isSearching = false
             showPreview = false
             previewResult = nil
+        }
+    }
+
+    func showApplications() {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            showingApplications = true
+            showingRecents = false
+            showingClipboard = false
+            selectedIndex = 0
+            keyboardFocusedIndex = 0
+            isSearching = false
+            showPreview = false
+            previewResult = nil
+            results = []
         }
     }
 
@@ -58,6 +74,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             clipboardItems = items
             showingClipboard = true
             showingRecents = false
+            showingApplications = false
             selectedClipboardIndex = 0
             clipboardFocusedIndex = 0
             isSearching = false
@@ -79,6 +96,34 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func performSearch(query: String) {
         activeTask?.cancel()
         engine.cancel()
+
+        if showingApplications {
+            // Always search in Applications mode (even empty query shows all apps)
+            showingClipboard = false
+            showingRecents = false
+            isSearching = true
+            selectedIndex = 0
+            keyboardFocusedIndex = 0
+            showPreview = false
+            previewResult = nil
+
+            let maxResults = SettingsManager.shared.maxResultsInt
+            activeTask = Task { [weak self] in
+                guard let self else { return }
+
+                try? await Task.sleep(nanoseconds: 80_000_000)
+                guard !Task.isCancelled else { return }
+
+                self.engine.searchApplications(query: query, maxResults: maxResults) { batch in
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        self.results = batch
+                        self.isSearching = false
+                    }
+                }
+            }
+            return
+        }
 
         guard query.count >= 1 else {
             showRecents()
@@ -155,6 +200,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             guard results.indices.contains(selectedIndex) else { return }
             let result = results[selectedIndex]
             NSWorkspace.shared.open(result.url)
+            NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
         }
     }
 

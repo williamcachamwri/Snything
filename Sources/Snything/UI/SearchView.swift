@@ -69,18 +69,34 @@ struct SearchView: View {
             .focused($isSearchFocused)
             .padding(.bottom, 8)
 
-            // Tab switcher: Files vs Clipboard
+            // Tab switcher: Files | Applications | Clipboard
             HStack(spacing: 8) {
                 TabButton(
                     title: "Files",
                     icon: "magnifyingglass",
-                    isActive: !coordinator.showingClipboard
+                    isActive: !coordinator.showingApplications && !coordinator.showingClipboard
                 ) {
-                    if coordinator.showingClipboard {
+                    if coordinator.showingApplications || coordinator.showingClipboard {
                         query = ""
                         stopClipboardTimer()
                         coordinator.showRecents()
                         startRecentsTimer()
+                    }
+                }
+                TabButton(
+                    title: "Applications",
+                    icon: "app",
+                    isActive: coordinator.showingApplications
+                ) {
+                    if !coordinator.showingApplications {
+                        query = ""
+                        stopRecentsTimer()
+                        stopClipboardTimer()
+                        coordinator.showApplications()
+                        // Trigger search immediately for all apps if no query
+                        if query.isEmpty {
+                            coordinator.performSearch(query: "")
+                        }
                     }
                 }
                 TabButton(
@@ -102,16 +118,33 @@ struct SearchView: View {
 
             if coordinator.showingRecents && coordinator.results.isEmpty {
                 noRecentsState
+            } else if coordinator.showingApplications && coordinator.results.isEmpty && !query.isEmpty {
+                emptyState
             } else if coordinator.showingClipboard && coordinator.clipboardItems.isEmpty {
                 noClipboardState
             } else if coordinator.isSearching && coordinator.results.isEmpty {
                 searchingIndicator
-            } else if !coordinator.showingRecents && !coordinator.showingClipboard && coordinator.results.isEmpty && !query.isEmpty {
+            } else if !coordinator.showingRecents && !coordinator.showingApplications && !coordinator.showingClipboard && coordinator.results.isEmpty && !query.isEmpty {
                 emptyState
             } else if coordinator.showingClipboard {
                 VStack(spacing: 0) {
                     clipboardHeader
                     ClipboardListView(coordinator: coordinator, namespace: animationNamespace)
+                }
+            } else if coordinator.showingApplications {
+                VStack(spacing: 0) {
+                    HStack {
+                        Image(systemName: "app.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        Text("Applications")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.7))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 6)
+                    ResultListView(coordinator: coordinator, namespace: animationNamespace)
                 }
             } else if coordinator.showingRecents {
                 VStack(spacing: 0) {
@@ -170,8 +203,12 @@ struct SearchView: View {
         debounceTask?.cancel()
         if newValue.isEmpty {
             stopClipboardTimer()
-            coordinator.showRecents()
-            startRecentsTimer()
+            if coordinator.showingApplications {
+                coordinator.showApplications()
+            } else {
+                coordinator.showRecents()
+                startRecentsTimer()
+            }
             return
         }
         stopRecentsTimer()
