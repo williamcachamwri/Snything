@@ -86,7 +86,7 @@ struct SearchView: View {
                 }
                 TabButton(
                     title: "Applications",
-                    icon: .nsImage(NSWorkspace.shared.icon(for: UTType.applicationBundle)),
+                    icon: .system("square.grid.2x2"),
                     isActive: coordinator.showingApplications
                 ) {
                     if !coordinator.showingApplications {

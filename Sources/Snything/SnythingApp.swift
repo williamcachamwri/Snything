@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var outsideClickMonitor: Any?
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
+    private let hasShownSplashKey = "hasShownSplash"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Start hidden until onboarding decides
@@ -35,9 +36,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         let hasCompleted = UserDefaults.standard.bool(forKey: hasCompletedOnboardingKey)
+        let hasShownSplash = UserDefaults.standard.bool(forKey: hasShownSplashKey)
         if hasCompleted {
             hideDockIcon()
-            showSplashThenMain()
+            if hasShownSplash {
+                setupSearchWindow()
+                checkForUpdatesIfEnabled()
+            } else {
+                showSplashThenMain()
+            }
         } else {
             showDockIcon()
             showOnboarding()
@@ -148,6 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showSplashThenMain() {
         let splashWindow = createHostingWindow(
             rootView: SplashView {
+                UserDefaults.standard.set(true, forKey: self.hasShownSplashKey)
                 self.closeOnboardingWindow()
                 self.setupSearchWindow()
                 self.checkForUpdatesIfEnabled()
