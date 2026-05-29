@@ -122,6 +122,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             guard !clipboardItems.isEmpty else { return }
             selectedClipboardIndex = (selectedClipboardIndex + 1) % clipboardItems.count
             clipboardFocusedIndex = selectedClipboardIndex
+            updateClipboardPreview()
         } else {
             guard !results.isEmpty else { return }
             selectedIndex = (selectedIndex + 1) % results.count
@@ -135,6 +136,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             guard !clipboardItems.isEmpty else { return }
             selectedClipboardIndex = (selectedClipboardIndex - 1 + clipboardItems.count) % clipboardItems.count
             clipboardFocusedIndex = selectedClipboardIndex
+            updateClipboardPreview()
         } else {
             guard !results.isEmpty else { return }
             selectedIndex = (selectedIndex - 1 + results.count) % results.count
@@ -212,5 +214,14 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             showPreview = true
         }
         previewResult = results[selectedIndex]
+    }
+
+    private func updateClipboardPreview() {
+        let autoPreview = SettingsManager.shared.showPreviewOnSelect
+        guard (showPreview || autoPreview), clipboardItems.indices.contains(selectedClipboardIndex) else { return }
+        if autoPreview {
+            showPreview = true
+        }
+        clipboardPreviewItem = clipboardItems[selectedClipboardIndex]
     }
 }
