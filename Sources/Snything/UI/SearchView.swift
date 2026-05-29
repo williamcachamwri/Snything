@@ -161,9 +161,7 @@ struct SearchView: View {
         recentsTimer?.invalidate()
         recentsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
             guard coordinator.showingRecents else { return }
-            withAnimation(.easeOut(duration: 0.15)) {
-                coordinator.showRecents()
-            }
+            coordinator.showRecents()
         }
     }
 

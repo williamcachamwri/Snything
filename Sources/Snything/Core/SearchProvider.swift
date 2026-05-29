@@ -29,13 +29,18 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
 
     func showRecents() {
         let recents = RecentFilesManager.shared.recentResults()
-        results = recents
-        showingRecents = true
-        selectedIndex = 0
-        keyboardFocusedIndex = 0
-        isSearching = false
-        showPreview = false
-        previewResult = nil
+        let newPaths = recents.map(\.path)
+        let currentPaths = results.map(\.path)
+        guard newPaths != currentPaths else { return }
+        withAnimation(.none) {
+            results = recents
+            showingRecents = true
+            selectedIndex = 0
+            keyboardFocusedIndex = 0
+            isSearching = false
+            showPreview = false
+            previewResult = nil
+        }
     }
 
     func performSearch(query: String) {
