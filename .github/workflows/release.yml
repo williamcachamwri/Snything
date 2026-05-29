@@ -111,20 +111,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Continuous pre-release: updated on every push to main
-      - name: Update Continuous Release
+      # Auto-release on every push to main: version 1.0.{int}
+      - name: Create Versioned Release
         if: github.ref == 'refs/heads/main'
         run: |
-          echo "Updating continuous pre-release..."
-          gh release delete continuous --yes 2>/dev/null || true
-          git push origin :refs/tags/continuous 2>/dev/null || true
-          git tag -f continuous "${{ github.sha }}"
-          git push origin continuous --force
-          gh release create continuous \
+          echo "Computing next version..."
+
+          # Get the latest release tag matching v1.0.*
+          LATEST=$(gh release list --limit 30 --json tagName --jq '.[].tagName' 2>/dev/null | grep '^v1\.0\.' | head -1 || echo "")
+
+          if [ -n "$LATEST" ]; then
+            # Extract the integer part: v1.0.5 → 5
+            CURRENT=$(echo "$LATEST" | sed -E 's/^v1\.0\.([0-9]+)$/\1/')
+            NEXT=$((CURRENT + 1))
+          else
+            NEXT=0
+          fi
+
+          TAG="v1.0.${NEXT}"
+          TITLE="version 1.0.${NEXT}"
+
+          echo "Creating release ${TITLE} (tag ${TAG})..."
+          gh release create "$TAG" \
             ".build/Snything-Release.dmg" \
-            --title "Snything Continuous Build" \
-            --notes-file "/tmp/release_notes.md" \
-            --prerelease
+            --title "$TITLE" \
+            --notes-file "/tmp/release_notes.md"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
