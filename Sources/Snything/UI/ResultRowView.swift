@@ -40,12 +40,31 @@ struct ResultRowView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
+                        .stroke(
+                            isSelected
+                                ? AnyShapeStyle(LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        Color.accentColor.opacity(0.45),
+                                        Color.accentColor.opacity(0.15)
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                  ))
+                                : AnyShapeStyle(Color.clear),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: isSelected ? Color.accentColor.opacity(0.15) : Color.clear,
+                    radius: isSelected ? 8 : 0,
+                    x: 0,
+                    y: isSelected ? 2 : 0
                 )
                 .matchedGeometryEffect(id: "selection", in: namespace, isSource: isSelected)
+                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
         )
         .contentShape(Rectangle())
         .onAppear {
