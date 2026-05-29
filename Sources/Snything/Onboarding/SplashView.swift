@@ -7,6 +7,7 @@ struct SplashView: View {
     @State private var textOffset: CGFloat = 28
     @State private var orbScale: CGFloat = 0.6
     @State private var orbOpacity: Double = 0
+    @State private var hasTriggered = false
 
     let onComplete: () -> Void
 
@@ -98,6 +99,9 @@ struct SplashView: View {
         }
         .frame(width: 420, height: 320)
         .onAppear {
+            guard !hasTriggered else { return }
+            hasTriggered = true
+
             // Orb fades in and pulses
             withAnimation(.spring(response: 0.6, dampingFraction: 0.65)) {
                 orbScale = 1.0
