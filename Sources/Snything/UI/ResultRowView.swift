@@ -6,6 +6,7 @@ struct ResultRowView: View {
     var namespace: Namespace.ID
 
     @State private var iconImage: NSImage?
+    @State private var thumbnailImage: NSImage?
     @State private var isHovered = false
 
     private let iconSize: CGFloat = 36
@@ -86,7 +87,12 @@ struct ResultRowView: View {
     @ViewBuilder
     private var iconView: some View {
         Group {
-            if let iconImage {
+            if let thumbnailImage {
+                Image(nsImage: thumbnailImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            } else if let iconImage {
                 Image(nsImage: iconImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -104,11 +110,25 @@ struct ResultRowView: View {
     }
 
     private func loadIcon() {
+        if result.kind == .image {
+            loadThumbnail()
+            return
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             let image = NSWorkspace.shared.icon(forFile: result.url.path)
             let resized = image.resized(to: NSSize(width: iconSize * 2, height: iconSize * 2))
             DispatchQueue.main.async {
                 self.iconImage = resized
+            }
+        }
+    }
+
+    private func loadThumbnail() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let image = NSImage(contentsOfFile: result.url.path) else { return }
+            let resized = image.resized(to: NSSize(width: iconSize * 2, height: iconSize * 2))
+            DispatchQueue.main.async {
+                self.thumbnailImage = resized
             }
         }
     }
