@@ -10,6 +10,9 @@ struct PreviewView: View {
             case .folder:
                 FolderPreviewView(url: result.url)
                     .id(result.url)
+            case .application:
+                AppBundlePreviewView(url: result.url)
+                    .id(result.url)
             case .image:
                 ImagePreviewView(url: result.url)
                     .id(result.url)
@@ -430,6 +433,213 @@ struct GitInfo {
     let staged: Int
     let ahead: Int
     let behind: Int
+}
+
+// MARK: - App Bundle Preview
+
+struct AppBundlePreviewView: View {
+    let url: URL
+    @State private var tree: TreeNode? = nil
+    @State private var appIcon: NSImage? = nil
+    @State private var appVersion: String = ""
+    @State private var bundleID: String = ""
+    @State private var totalSize: Int64 = 0
+    @State private var fileCount: Int = 0
+    @State private var dirCount: Int = 0
+    @State private var isLoading = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider()
+                .background(Color.white.opacity(0.08))
+
+            if isLoading {
+                Spacer()
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Scanning bundle structure...")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                Spacer()
+            } else if tree == nil || tree!.children.isEmpty {
+                Spacer()
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "app")
+                            .font(.system(size: 28))
+                            .foregroundColor(.secondary.opacity(0.4))
+                        Text("Empty bundle")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                    Spacer()
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(tree!.children) { child in
+                            TreeNodeView(node: child, depth: 0)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+        .background(Color.secondary.opacity(0.04))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .task(id: url) {
+            await loadBundleData()
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                if let appIcon {
+                    Image(nsImage: appIcon)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 44, height: 44)
+                        .cornerRadius(10)
+                } else {
+                    Image(systemName: "app.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.purple)
+                        .frame(width: 44, height: 44)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(url.lastPathComponent)
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    if !appVersion.isEmpty || !bundleID.isEmpty {
+                        Text("\(appVersion)  ·  \(bundleID)")
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.7))
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                Label("\(fileCount + dirCount) items", systemImage: "doc.on.doc")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                Label(byteCount(totalSize), systemImage: "externaldrive")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                Label("\(fileCount)f / \(dirCount)d", systemImage: "arrow.down.circle")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
+        }
+    }
+
+    private func loadBundleData() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        await MainActor.run {
+            self.appIcon = NSWorkspace.shared.icon(forFile: url.path)
+        }
+
+        let plistURL = url.appendingPathComponent("Contents/Info.plist")
+        if let dict = NSDictionary(contentsOf: plistURL) as? [String: Any] {
+            await MainActor.run {
+                self.appVersion = dict["CFBundleShortVersionString"] as? String
+                    ?? dict["CFBundleVersion"] as? String
+                    ?? ""
+                self.bundleID = dict["CFBundleIdentifier"] as? String ?? ""
+            }
+        }
+
+        let rootTree = buildTree(at: url, depth: 0, maxDepth: 3, maxChildren: 80)
+        let stats = computeRecursiveStats(at: url)
+
+        await MainActor.run {
+            self.tree = rootTree
+            self.totalSize = stats.size
+            self.fileCount = stats.fileCount
+            self.dirCount = stats.dirCount
+        }
+    }
+
+    private func buildTree(at root: URL, depth: Int, maxDepth: Int, maxChildren: Int) -> TreeNode {
+        let fm = FileManager.default
+        var children: [TreeNode] = []
+
+        if depth < maxDepth,
+           let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: .skipsHiddenFiles) {
+            let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
+            for item in sorted.prefix(maxChildren) {
+                let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+                if isDir {
+                    let child = buildTree(at: item, depth: depth + 1, maxDepth: maxDepth, maxChildren: maxChildren)
+                    children.append(child)
+                } else {
+                    let size = item.fileSize() ?? 0
+                    children.append(TreeNode(name: item.lastPathComponent, url: item, isDirectory: false, size: size))
+                }
+            }
+        }
+
+        return TreeNode(name: root.lastPathComponent, url: root, isDirectory: true, children: children)
+    }
+
+    private func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
+        let fm = FileManager.default
+        var totalSize: Int64 = 0
+        var fileCount = 0
+        var dirCount = 0
+
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles],
+            errorHandler: nil
+        ) else { return (0, 0, 0) }
+
+        for case let item as URL in enumerator {
+            autoreleasepool {
+                if let values = try? item.resourceValues(forKeys: [.isDirectoryKey]), values.isDirectory == true {
+                    dirCount += 1
+                } else {
+                    fileCount += 1
+                    if let size = try? item.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                        totalSize += Int64(size)
+                    }
+                }
+            }
+        }
+        return (totalSize, fileCount, dirCount)
+    }
+
+    private func byteCount(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useAll]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
 }
 
 // MARK: - Image Preview
