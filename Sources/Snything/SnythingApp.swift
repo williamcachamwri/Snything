@@ -233,6 +233,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Search Window
 
     private func setupSearchWindow() {
+        guard searchWindowController == nil else {
+            searchWindowController?.showWindow(nil)
+            return
+        }
         searchWindowController = SearchWindowController()
         searchWindowController?.showWindow(nil)
 
