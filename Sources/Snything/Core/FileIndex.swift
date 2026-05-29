@@ -71,19 +71,23 @@ final class FileIndex: @unchecked Sendable {
         let localEntries: [IndexEntry]
         localEntries = indexLock.withLock { self.entries }
 
-        // If index hasn't finished building yet, use direct filesystem fallback
-        if localEntries.isEmpty {
-            return deepScan(query: lowerQ, maxResults: maxResults)
-        }
+        // If index hasn't finished building yet, return empty.
+        // Spotlight mdfind in FastSearchEngine will serve as the fallback.
+        // deepScan() was removed because it causes CPU overload / crashes
+        // when the user types rapidly while the filesystem is being scanned.
+        guard !localEntries.isEmpty else { return [] }
 
-        for entry in localEntries {
-            guard !Task.isCancelled else { break }
+        let qCount = lowerQ.count
+
+        for (idx, entry) in localEntries.enumerated() {
+            // Batch cancellation check — only every 1000 items to avoid overhead
+            if idx % 1000 == 0, Task.isCancelled { break }
 
             let name = entry.lowerName
-            var score: Double = 0
-
             let nCount = name.count
-            let qCount = lowerQ.count
+            guard qCount <= nCount else { continue }
+
+            var score: Double = 0
 
             if name == lowerQ {
                 score = 1000
@@ -92,7 +96,7 @@ final class FileIndex: @unchecked Sendable {
             } else if name.contains(lowerQ) {
                 score = 300 + (Double(qCount) / Double(nCount)) * 100
             } else {
-                // Fast fuzzy: all query chars in order (safe, no String.Index)
+                // Fast fuzzy: all query chars in order
                 let qChars = Array(lowerQ)
                 let nChars = Array(name)
                 var qi = 0
@@ -134,51 +138,6 @@ final class FileIndex: @unchecked Sendable {
             if results.count >= maxResults { break }
         }
 
-        return results
-    }
-
-    /// Deep filesystem scan when index is still building.
-    /// Recurses into ALL subdirectories of /Users and home.
-    private func deepScan(query: String, maxResults: Int) -> [SearchResult] {
-        let home = NSHomeDirectory()
-        let scopes = [home, "/Users"]
-        let fm = FileManager.default
-        var results: [SearchResult] = []
-        results.reserveCapacity(maxResults)
-
-        for scope in scopes {
-            guard !Task.isCancelled else { break }
-            guard let enumerator = fm.enumerator(
-                at: URL(fileURLWithPath: scope),
-                includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey],
-                options: [],
-                errorHandler: nil
-            ) else { continue }
-
-            for case let url as URL in enumerator {
-                if Task.isCancelled { break }
-                if results.count >= maxResults { return results }
-
-                autoreleasepool {
-                    let path = url.path
-                    if self.shouldSkip(path) {
-                        enumerator.skipDescendants()
-                        return
-                    }
-                    let name = url.lastPathComponent.lowercased()
-                    guard name.contains(query) else { return }
-
-                    let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey])
-                    let kind: SearchResult.ResultKind = (values?.isDirectory ?? false) ? .folder : SearchResult.kind(from: url)
-                    let score: Double = name.hasPrefix(query) ? 400 : 200
-                    results.append(SearchResult(
-                        url: url, name: url.lastPathComponent, path: url.path,
-                        kind: kind, size: values?.fileSize.map(Int64.init), modifiedDate: values?.contentModificationDate,
-                        relevanceScore: score
-                    ))
-                }
-            }
-        }
         return results
     }
 

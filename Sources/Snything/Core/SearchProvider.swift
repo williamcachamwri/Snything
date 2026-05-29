@@ -63,6 +63,12 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
 
         activeTask = Task { [weak self] in
             guard let self else { return }
+
+            // Debounce: wait 80ms for user to stop typing.
+            // If another keystroke arrives, this task is cancelled before search starts.
+            try? await Task.sleep(nanoseconds: 80_000_000)
+            guard !Task.isCancelled else { return }
+
             self.engine.search(query: query, maxResults: maxResults) { batch in
                 guard !Task.isCancelled else { return }
                 withAnimation(.easeOut(duration: 0.15)) {
