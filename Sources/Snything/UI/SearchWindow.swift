@@ -47,77 +47,151 @@ final class SearchWindowController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    // MARK: - Show
+
     override func showWindow(_ sender: Any?) {
         guard let window = window else { return }
         window.center()
         NSApp.activate(ignoringOtherApps: true)
 
-        let contentLayer = window.contentView?.layer
-        contentLayer?.setValue(0.82, forKeyPath: "transform.scale.x")
-        contentLayer?.setValue(0.82, forKeyPath: "transform.scale.y")
-        contentLayer?.setValue(0.0, forKeyPath: "opacity")
+        let layer = window.contentView?.layer
+
+        // Initial state: invisible, smaller, and slightly shifted down
+        layer?.setValue(0.88, forKeyPath: "transform.scale.x")
+        layer?.setValue(0.88, forKeyPath: "transform.scale.y")
+        layer?.setValue(24.0, forKeyPath: "transform.translation.y")
+        layer?.setValue(0.0, forKeyPath: "opacity")
+        layer?.setValue(0.0, forKeyPath: "shadowOpacity")
+
         window.makeKeyAndOrderFront(sender)
 
-        let spring = CASpringAnimation(keyPath: "transform.scale.x")
-        spring.mass = 0.8
-        spring.stiffness = 200
-        spring.damping = 22
-        spring.initialVelocity = 6
-        spring.fromValue = 0.82
-        spring.toValue = 1.0
-        spring.duration = spring.settlingDuration
+        // --- Scale X: snappy spring ---
+        let springX = CASpringAnimation(keyPath: "transform.scale.x")
+        springX.mass = 0.55
+        springX.stiffness = 320
+        springX.damping = 20
+        springX.initialVelocity = 10
+        springX.fromValue = 0.88
+        springX.toValue = 1.0
+        springX.duration = springX.settlingDuration
+        springX.fillMode = .forwards
 
+        // --- Scale Y: slightly different mass for organic feel ---
         let springY = CASpringAnimation(keyPath: "transform.scale.y")
-        springY.mass = 0.8
-        springY.stiffness = 200
-        springY.damping = 22
-        springY.initialVelocity = 6
-        springY.fromValue = 0.82
+        springY.mass = 0.6
+        springY.stiffness = 300
+        springY.damping = 20
+        springY.initialVelocity = 10
+        springY.fromValue = 0.88
         springY.toValue = 1.0
         springY.duration = springY.settlingDuration
+        springY.fillMode = .forwards
 
+        // --- Translate Y: slide up from below ---
+        let slide = CASpringAnimation(keyPath: "transform.translation.y")
+        slide.mass = 0.6
+        slide.stiffness = 280
+        slide.damping = 22
+        slide.initialVelocity = 8
+        slide.fromValue = 24.0
+        slide.toValue = 0.0
+        slide.duration = slide.settlingDuration
+        slide.fillMode = .forwards
+
+        // --- Opacity: smooth fade in ---
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 0.0
         fade.toValue = 1.0
-        fade.duration = 0.18
+        fade.duration = 0.22
         fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        fade.fillMode = .forwards
 
-        contentLayer?.add(spring, forKey: "scaleX")
-        contentLayer?.add(springY, forKey: "scaleY")
-        contentLayer?.add(fade, forKey: "fade")
+        // --- Shadow opacity: shadow builds up with the scale ---
+        let shadowFade = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowFade.fromValue = 0.0
+        shadowFade.toValue = 0.35
+        shadowFade.duration = 0.28
+        shadowFade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        shadowFade.fillMode = .forwards
 
-        contentLayer?.setValue(1.0, forKeyPath: "transform.scale.x")
-        contentLayer?.setValue(1.0, forKeyPath: "transform.scale.y")
-        contentLayer?.setValue(1.0, forKeyPath: "opacity")
+        layer?.add(springX, forKey: "scaleX")
+        layer?.add(springY, forKey: "scaleY")
+        layer?.add(slide, forKey: "slideY")
+        layer?.add(fade, forKey: "fade")
+        layer?.add(shadowFade, forKey: "shadowFade")
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        // Lock final values so they stick
+        layer?.setValue(1.0, forKeyPath: "transform.scale.x")
+        layer?.setValue(1.0, forKeyPath: "transform.scale.y")
+        layer?.setValue(0.0, forKeyPath: "transform.translation.y")
+        layer?.setValue(1.0, forKeyPath: "opacity")
+        layer?.setValue(0.35, forKeyPath: "shadowOpacity")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
             self.forceFocusSearchField()
         }
     }
 
-    func hideWindow() {
-        guard let window = window, let contentLayer = window.contentView?.layer else { return }
+    // MARK: - Hide
 
+    func hideWindow() {
+        guard let window = window, let layer = window.contentView?.layer else { return }
+
+        // --- Opacity: fast fade out ---
         let fade = CABasicAnimation(keyPath: "opacity")
         fade.fromValue = 1.0
         fade.toValue = 0.0
-        fade.duration = 0.10
+        fade.duration = 0.12
         fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        fade.fillMode = .forwards
 
-        let shrink = CABasicAnimation(keyPath: "transform.scale")
-        shrink.fromValue = 1.0
-        shrink.toValue = 0.96
-        shrink.duration = 0.10
-        shrink.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        // --- Scale: shrink slightly with more punch ---
+        let shrinkX = CABasicAnimation(keyPath: "transform.scale.x")
+        shrinkX.fromValue = 1.0
+        shrinkX.toValue = 0.94
+        shrinkX.duration = 0.12
+        shrinkX.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        shrinkX.fillMode = .forwards
 
-        contentLayer.add(fade, forKey: "fadeOut")
-        contentLayer.add(shrink, forKey: "shrink")
-        contentLayer.setValue(0.0, forKeyPath: "opacity")
+        let shrinkY = CABasicAnimation(keyPath: "transform.scale.y")
+        shrinkY.fromValue = 1.0
+        shrinkY.toValue = 0.94
+        shrinkY.duration = 0.12
+        shrinkY.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        shrinkY.fillMode = .forwards
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        // --- Slide down slightly as it disappears ---
+        let slideDown = CABasicAnimation(keyPath: "transform.translation.y")
+        slideDown.fromValue = 0.0
+        slideDown.toValue = 12.0
+        slideDown.duration = 0.12
+        slideDown.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        slideDown.fillMode = .forwards
+
+        // --- Shadow fades with the window ---
+        let shadowOut = CABasicAnimation(keyPath: "shadowOpacity")
+        shadowOut.fromValue = 0.35
+        shadowOut.toValue = 0.0
+        shadowOut.duration = 0.10
+        shadowOut.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        shadowOut.fillMode = .forwards
+
+        layer.add(fade, forKey: "fadeOut")
+        layer.add(shrinkX, forKey: "shrinkX")
+        layer.add(shrinkY, forKey: "shrinkY")
+        layer.add(slideDown, forKey: "slideDown")
+        layer.add(shadowOut, forKey: "shadowOut")
+
+        layer.setValue(0.0, forKeyPath: "opacity")
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
             window.orderOut(nil)
-            contentLayer.setValue(1.0, forKeyPath: "opacity")
-            contentLayer.setValue(1.0, forKeyPath: "transform.scale")
+            // Reset for next show
+            layer.setValue(1.0, forKeyPath: "transform.scale.x")
+            layer.setValue(1.0, forKeyPath: "transform.scale.y")
+            layer.setValue(0.0, forKeyPath: "transform.translation.y")
+            layer.setValue(1.0, forKeyPath: "opacity")
+            layer.setValue(0.0, forKeyPath: "shadowOpacity")
         }
     }
 
