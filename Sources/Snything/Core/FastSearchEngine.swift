@@ -1,5 +1,29 @@
 import Foundation
 import AppKit
+import os
+
+/// Lightweight unfair lock wrapper safe for concurrent use.
+/// Replaces NSLock to avoid Swift concurrency warnings in async contexts.
+final class UnfairLock {
+    private let _lock: os_unfair_lock_t
+
+    init() {
+        _lock = .allocate(capacity: 1)
+        _lock.initialize(to: os_unfair_lock())
+    }
+
+    deinit {
+        _lock.deinitialize(count: 1)
+        _lock.deallocate()
+    }
+
+    @discardableResult
+    func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        os_unfair_lock_lock(_lock)
+        defer { os_unfair_lock_unlock(_lock) }
+        return try body()
+    }
+}
 
 /// Ultra-fast parallel search engine using Spotlight (mdfind) as the primary source.
 /// Phase 1 (mdfind name) and Phase 2 (mdfind content) run in parallel via TaskGroup.
@@ -9,14 +33,14 @@ final class FastSearchEngine: @unchecked Sendable {
 
     private var currentTask: Task<Void, Never>?
     private var activeProcesses = Set<Process>()
-    private let processLock = NSLock()
+    private let processLock = UnfairLock()
 
     private let cache = NSCache<NSString, NSArray>()
-    private let cacheLock = NSLock()
+    private let cacheLock = UnfairLock()
 
     private var appCache: [SearchResult] = []
     private var appCacheLoaded = false
-    private let appCacheLock = NSLock()
+    private let appCacheLock = UnfairLock()
 
     private init() {
         cache.countLimit = 50
@@ -94,8 +118,9 @@ final class FastSearchEngine: @unchecked Sendable {
                 print("[Search] slow query '\(q)' took \(String(format: "%.2f", elapsed))s, \(unique.count) results")
             }
 
-            self.setCache(key: cacheKey, results: unique)
-            await MainActor.run { onBatch(unique) }
+            let finalResults = unique
+            self.setCache(key: cacheKey, results: finalResults)
+            await MainActor.run { onBatch(finalResults) }
         }
         currentTask = task
     }
@@ -118,13 +143,13 @@ final class FastSearchEngine: @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
 
-        processLock.lock()
-        activeProcesses.insert(process)
-        processLock.unlock()
+        processLock.withLock {
+            activeProcesses.insert(process)
+        }
         defer {
-            processLock.lock()
-            activeProcesses.remove(process)
-            processLock.unlock()
+            processLock.withLock {
+                activeProcesses.remove(process)
+            }
         }
 
         do {
@@ -184,13 +209,13 @@ final class FastSearchEngine: @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
 
-        processLock.lock()
-        activeProcesses.insert(process)
-        processLock.unlock()
+        processLock.withLock {
+            activeProcesses.insert(process)
+        }
         defer {
-            processLock.lock()
-            activeProcesses.remove(process)
-            processLock.unlock()
+            processLock.withLock {
+                activeProcesses.remove(process)
+            }
         }
 
         do { try process.run() } catch { return [] }
@@ -274,17 +299,15 @@ final class FastSearchEngine: @unchecked Sendable {
                 }
             }
 
-            await MainActor.run { onBatch(unique) }
+            let finalResults = unique
+            await MainActor.run { onBatch(finalResults) }
         }
         currentTask = task
     }
 
     private func allApplications(maxResults: Int) async -> [SearchResult] {
         ensureAppCache()
-        var cached: [SearchResult] = []
-        appCacheLock.lock()
-        cached = appCache
-        appCacheLock.unlock()
+        let cached = appCacheLock.withLock { appCache }
 
         return cached
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -309,13 +332,13 @@ final class FastSearchEngine: @unchecked Sendable {
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
 
-        processLock.lock()
-        activeProcesses.insert(process)
-        processLock.unlock()
+        processLock.withLock {
+            activeProcesses.insert(process)
+        }
         defer {
-            processLock.lock()
-            activeProcesses.remove(process)
-            processLock.unlock()
+            processLock.withLock {
+                activeProcesses.remove(process)
+            }
         }
 
         do { try process.run() } catch { return [] }
@@ -350,38 +373,35 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Applications
 
     private func ensureAppCache() {
-        appCacheLock.lock()
-        defer { appCacheLock.unlock() }
-        guard !appCacheLoaded else { return }
+        appCacheLock.withLock {
+            guard !appCacheLoaded else { return }
 
-        let dirs = ["/Applications", "/System/Applications", "\(NSHomeDirectory())/Applications"]
-        let fm = FileManager.default
-        var apps: [SearchResult] = []
-        for dir in dirs {
-            guard let urls = try? fm.contentsOfDirectory(
-                at: URL(fileURLWithPath: dir),
-                includingPropertiesForKeys: nil
-            ) else { continue }
-            for url in urls where url.pathExtension == "app" {
-                let name = appDisplayName(for: url)
-                apps.append(SearchResult(
-                    url: url, name: name, path: url.path,
-                    kind: .application, size: nil, modifiedDate: nil,
-                    relevanceScore: 0,
-                    subtitle: url.deletingLastPathComponent().path
-                ))
+            let dirs = ["/Applications", "/System/Applications", "\(NSHomeDirectory())/Applications"]
+            let fm = FileManager.default
+            var apps: [SearchResult] = []
+            for dir in dirs {
+                guard let urls = try? fm.contentsOfDirectory(
+                    at: URL(fileURLWithPath: dir),
+                    includingPropertiesForKeys: nil
+                ) else { continue }
+                for url in urls where url.pathExtension == "app" {
+                    let name = appDisplayName(for: url)
+                    apps.append(SearchResult(
+                        url: url, name: name, path: url.path,
+                        kind: .application, size: nil, modifiedDate: nil,
+                        relevanceScore: 0,
+                        subtitle: url.deletingLastPathComponent().path
+                    ))
+                }
             }
+            appCache = apps
+            appCacheLoaded = true
         }
-        appCache = apps
-        appCacheLoaded = true
     }
 
     private func scanApplications(query: String, maxResults: Int) async -> [SearchResult] {
         ensureAppCache()
-        var cached: [SearchResult] = []
-        appCacheLock.lock()
-        cached = appCache
-        appCacheLock.unlock()
+        let cached = appCacheLock.withLock { appCache }
 
         let q = query.lowercased()
         var results: [SearchResult] = []
@@ -413,10 +433,11 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Process Control
 
     private func cancelProcesses() {
-        processLock.lock()
-        let procs = Array(activeProcesses)
-        activeProcesses.removeAll()
-        processLock.unlock()
+        let procs = processLock.withLock {
+            let p = Array(activeProcesses)
+            activeProcesses.removeAll()
+            return p
+        }
         for proc in procs {
             proc.terminate()
         }
@@ -425,16 +446,16 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - Cache
 
     private func cachedResults(for key: NSString) -> [SearchResult]? {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        return cache.object(forKey: key) as? [SearchResult]
+        cacheLock.withLock {
+            cache.object(forKey: key) as? [SearchResult]
+        }
     }
 
     private func setCache(key: NSString, results: [SearchResult]) {
-        cacheLock.lock()
-        defer { cacheLock.unlock() }
-        let cost = results.count * 1024
-        cache.setObject(results as NSArray, forKey: key, cost: cost)
+        cacheLock.withLock {
+            let cost = results.count * 1024
+            cache.setObject(results as NSArray, forKey: key, cost: cost)
+        }
     }
 }
 
