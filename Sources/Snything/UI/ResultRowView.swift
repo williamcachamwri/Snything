@@ -20,7 +20,8 @@ struct ResultRowView: View {
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
-                Text(result.parentPath)
+                let subtitleText = result.subtitle.isEmpty ? result.parentPath : result.subtitle
+                Text(subtitleText)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
                     .foregroundColor(.secondary.opacity(0.8))
                     .lineLimit(1)
@@ -30,9 +31,13 @@ struct ResultRowView: View {
 
             if isSelected {
                 HStack(spacing: 6) {
-                    ActionBadge(icon: "arrow.up.doc", label: "Drag")
-                    ActionBadge(icon: "return", label: "Open")
-                    ActionBadge(icon: "space", label: "Preview")
+                    if result.actionType == .openFile {
+                        ActionBadge(icon: "arrow.up.doc", label: "Drag")
+                        ActionBadge(icon: "return", label: "Open")
+                        ActionBadge(icon: "space", label: "Preview")
+                    } else {
+                        ActionBadge(icon: "return", label: "Run")
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
@@ -69,10 +74,14 @@ struct ResultRowView: View {
         )
         .contentShape(Rectangle())
         .onAppear {
-            loadIcon()
+            if result.actionType == .openFile {
+                loadIcon()
+            }
         }
         .onChange(of: result.url) { _, _ in
-            loadIcon()
+            if result.actionType == .openFile {
+                loadIcon()
+            }
         }
         .scaleEffect(isHovered ? 1.005 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovered)
@@ -80,7 +89,10 @@ struct ResultRowView: View {
             isHovered = hover
         }
         .onDrag {
-            NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
+            if result.actionType == .openFile {
+                return NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
+            }
+            return NSItemProvider()
         }
     }
 
@@ -125,6 +137,9 @@ struct ResultRowView: View {
         case .archive: return "archivebox.fill"
         case .code: return "chevron.left.forwardslash.chevron.right"
         case .file: return "doc.fill"
+        case .calculation: return "equal.circle.fill"
+        case .command: return "terminal.fill"
+        case .webSearch: return "magnifyingglass.circle.fill"
         }
     }
 
@@ -139,6 +154,9 @@ struct ResultRowView: View {
         case .archive: return .gray
         case .code: return .green
         case .file: return .secondary
+        case .calculation: return .yellow
+        case .command: return .green
+        case .webSearch: return .accentColor
         }
     }
 }
