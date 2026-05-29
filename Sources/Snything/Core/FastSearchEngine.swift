@@ -66,10 +66,9 @@ final class FastSearchEngine: @unchecked Sendable {
                 return
             }
 
-            // Phase 1: Spotlight name search (async)
-            // Phase 2: Cached apps fuzzy (async) 
-            // Phase 3: Spotlight content search (async, only if query >= 8 chars)
-            // All three run in parallel via TaskGroup
+            // Phase 1: Spotlight metadata search (name, tags, comments, authors, content)
+            // Phase 2: Cached apps fuzzy (async)
+            // Both run in parallel via TaskGroup
             let startTime = Date()
             var allResults: [SearchResult] = []
 
@@ -84,12 +83,8 @@ final class FastSearchEngine: @unchecked Sendable {
                     await self.scanApplications(query: q, maxResults: 100)
                 }
 
-                // Thread 3: Content search — only for long queries, heavily limited
-                if q.count >= 8 {
-                    group.addTask {
-                        await self.runMdfindContent(query: q, maxResults: 5)
-                    }
-                }
+                // Content search is now included in the primary name predicate above
+                // (kMDItemTextContent is part of runMdfindName), so no separate phase needed.
 
                 for await results in group {
                     if Task.isCancelled { break }
@@ -134,7 +129,18 @@ final class FastSearchEngine: @unchecked Sendable {
 
     private func runMdfindName(query: String, maxResults: Int) async -> [SearchResult] {
         let escaped = escapeForPredicate(query)
-        let pred = "kMDItemDisplayName == '*\(escaped)*'cd || kMDItemFSName == '*\(escaped)*'cd"
+        // Expanded predicate: name, tags, comments, authors, title, keywords, text content
+        let pred = """
+        kMDItemDisplayName == '*\(escaped)*'cd || \
+        kMDItemFSName == '*\(escaped)*'cd || \
+        kMDItemUserTags == '*\(escaped)*'cd || \
+        kMDItemFinderComment == '*\(escaped)*'cd || \
+        kMDItemAuthors == '*\(escaped)*'cd || \
+        kMDItemTitle == '*\(escaped)*'cd || \
+        kMDItemKeywords == '*\(escaped)*'cd || \
+        kMDItemAlbum == '*\(escaped)*'cd || \
+        kMDItemTextContent == '*\(escaped)*'cd
+        """
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
@@ -156,7 +162,6 @@ final class FastSearchEngine: @unchecked Sendable {
             try process.run()
         } catch { return [] }
 
-        // Read with timeout — if cancelled, kill the process immediately
         let data: Data
         do {
             data = try await withCheckedThrowingContinuation { continuation in
@@ -191,56 +196,6 @@ final class FastSearchEngine: @unchecked Sendable {
                 kind: SearchResult.kind(from: url),
                 size: url.fileSize(), modifiedDate: url.modDate(),
                 relevanceScore: 10.0
-            ))
-        }
-        return results
-    }
-
-    // MARK: - Spotlight Content Search (limited, parallel)
-
-    private func runMdfindContent(query: String, maxResults: Int) async -> [SearchResult] {
-        let escaped = escapeForPredicate(query)
-        let pred = "kMDItemTextContent == '*\(escaped)*'cd"
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        process.arguments = [pred]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-
-        processLock.withLock {
-            activeProcesses.insert(process)
-        }
-        defer {
-            processLock.withLock {
-                activeProcesses.remove(process)
-            }
-        }
-
-        do { try process.run() } catch { return [] }
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        guard !Task.isCancelled else { return [] }
-
-        let rawPaths = String(data: data, encoding: .utf8)?
-            .components(separatedBy: .newlines)
-            .filter { !$0.isEmpty } ?? []
-
-        let fm = FileManager.default
-        var results: [SearchResult] = []
-        let paths = rawPaths.prefix(maxResults)
-        for path in paths {
-            guard !Task.isCancelled else { break }
-            let url = URL(fileURLWithPath: String(path))
-            guard fm.fileExists(atPath: url.path) else { continue }
-            results.append(SearchResult(
-                url: url, name: url.lastPathComponent, path: url.path,
-                kind: SearchResult.kind(from: url),
-                size: url.fileSize(), modifiedDate: url.modDate(),
-                relevanceScore: 0.5,
-                subtitle: "Content match"
             ))
         }
         return results
