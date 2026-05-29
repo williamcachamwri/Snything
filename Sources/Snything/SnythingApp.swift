@@ -187,6 +187,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UpdateManager.shared.checkForUpdates(showAnyway: true)
     }
 
+    @objc private func grantFolderAccess() {
+        Task { @MainActor in
+            let granted = await BookmarkManager.shared.requestAccess()
+            if granted {
+                BookmarkManager.shared.restoreAccess()
+            }
+        }
+    }
+
     @objc private func quitApp() {
         NSApp.terminate(nil)
     }
@@ -213,6 +222,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let accessItem = NSMenuItem(title: "Grant Folder Access...", action: #selector(grantFolderAccess), keyEquivalent: "")
+        accessItem.target = self
+        menu.addItem(accessItem)
+
         let updateItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "")
         updateItem.target = self
         menu.addItem(updateItem)
@@ -237,6 +250,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             searchWindowController?.showWindow(nil)
             return
         }
+
+        // Restore persisted folder access bookmarks
+        BookmarkManager.shared.restoreAccess()
+
+        // If we have neither bookmarks nor Full Disk Access, prompt the user once
+        if !BookmarkManager.shared.hasBookmark {
+            let hasFDA = PermissionsManager().checkFullDiskAccess()
+            if !hasFDA {
+                Task { @MainActor in
+                    let granted = await BookmarkManager.shared.requestAccess()
+                    if !granted {
+                        print("[Snything] User declined folder access; TCC popups may appear.")
+                    }
+                }
+            }
+        }
+
         searchWindowController = SearchWindowController()
         searchWindowController?.showWindow(nil)
 
