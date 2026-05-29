@@ -47,32 +47,34 @@ final class FastSearchEngine: @unchecked Sendable {
                 return
             }
 
-            // Phase 1: Instant sync results
+            // Phase 1: Instant sync results (calculator, commands, web)
             var allResults: [SearchResult] = []
             allResults.append(contentsOf: self.evaluateCalculator(query: q))
             allResults.append(contentsOf: self.builtInCommands(query: q))
             allResults.append(contentsOf: self.webSearches(query: q))
 
-            // Phase 2: Fast in-memory index (no filesystem I/O)
-            let indexResults = FileIndex.shared.search(query: q, maxResults: maxResults)
-            allResults.append(contentsOf: indexResults)
-
-            // Phase 3: Cached apps (fuzzy from RAM)
-            let appResults = await self.scanApplications(query: q, maxResults: maxResults)
-            allResults.append(contentsOf: appResults)
-
-            // Phase 4: Spotlight for deep system files (async, capped)
-            async let spotResults = self.runMdfind(query: q, maxResults: maxResults / 2)
+            // Phase 2: Spotlight mdfind — PRIMARY source for files.
+            // Spotlight already indexes all of /Users, /Applications, etc.
+            // This is the fastest and most complete source.
+            async let spotResults = self.runMdfind(query: q, maxResults: maxResults)
             let spot = await spotResults
             allResults.append(contentsOf: spot)
 
-            // Phase 5: Content search (only for longer queries, strictly limited)
-            if q.count >= 5 {
-                let content = await self.runContentSearch(query: q, maxResults: 3)
+            // Phase 3: Cached apps (fuzzy from RAM, only if mdfind missed them)
+            let appResults = await self.scanApplications(query: q, maxResults: maxResults)
+            allResults.append(contentsOf: appResults)
+
+            // Phase 4: FileIndex — supplement anything mdfind missed
+            let indexResults = FileIndex.shared.search(query: q, maxResults: maxResults)
+            allResults.append(contentsOf: indexResults)
+
+            // Phase 5: Content search — very limited, only for long queries
+            if q.count >= 6 {
+                let content = await self.runContentSearch(query: q, maxResults: 2)
                 allResults.append(contentsOf: content)
             }
 
-            // Deduplicate + sort
+            // Deduplicate + sort by score
             var seen = Set<String>()
             var unique: [SearchResult] = []
             unique.reserveCapacity(allResults.count)
