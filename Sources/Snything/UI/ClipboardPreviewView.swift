@@ -7,8 +7,36 @@ struct ClipboardPreviewView: View {
     @State private var sourceAppIcon: NSImage? = nil
     @State private var imageContent: NSImage? = nil
     @State private var isHoveringClear = false
+    @State private var isPressingClear = false
+    @State private var isClearing = false
+    @State private var rippleScale: CGFloat = 0
+    @State private var rippleOpacity: Double = 0
+    @State private var flashOpacity: Double = 0
 
     var body: some View {
+        ZStack {
+            // Main preview content
+            previewBody
+                .opacity(isClearing ? 0 : 1)
+                .scaleEffect(isClearing ? 0.88 : 1)
+                .blur(radius: isClearing ? 6 : 0)
+
+            // White flash overlay on clear
+            Color.white
+                .opacity(flashOpacity)
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+        }
+        .animation(.easeOut(duration: 0.18), value: isClearing)
+        .animation(.easeOut(duration: 0.12), value: flashOpacity)
+        .onAppear {
+            loadSourceAppIcon()
+            loadImageIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var previewBody: some View {
         VStack(spacing: 0) {
             // Main content area with app icon badge overlay
             contentAreaWithBadge
@@ -25,25 +53,18 @@ struct ClipboardPreviewView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .onAppear {
-            loadSourceAppIcon()
-            loadImageIfNeeded()
-        }
     }
 
     @ViewBuilder
     private var contentAreaWithBadge: some View {
         ZStack(alignment: .bottomTrailing) {
-            // Main content
             contentArea
 
-            // App icon badge overlay at bottom-right of content
             if let sourceAppIcon {
                 appIconBadge(icon: sourceAppIcon)
             }
 
-            // Clear button in top-right
-            clearButton
+            clearButtonArea
                 .padding(.top, 12)
                 .padding(.trailing, 12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -76,33 +97,114 @@ struct ClipboardPreviewView: View {
         .padding(.bottom, 12)
     }
 
-    private var clearButton: some View {
-        Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                onClearAll()
+    private var clearButtonArea: some View {
+        ZStack {
+            // Ripple burst ring on click
+            Circle()
+                .fill(Color.red.opacity(0.25))
+                .frame(width: 80, height: 80)
+                .scaleEffect(rippleScale)
+                .opacity(rippleOpacity)
+
+            // The actual button
+            Button {
+                performClear()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "trash")
+                        .font(.system(size: 10, weight: .semibold))
+                        .rotationEffect(.degrees(isPressingClear ? -15 : 0))
+                        .offset(y: isPressingClear ? 2 : 0)
+
+                    Text("Clear")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                }
+                .foregroundColor(
+                    isPressingClear ? .white :
+                    (isHoveringClear ? .red.opacity(0.95) : .secondary.opacity(0.7))
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(
+                            isPressingClear ? Color.red :
+                            (isHoveringClear ? Color.red.opacity(0.14) : Color.secondary.opacity(0.08))
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(
+                            isPressingClear ? Color.red.opacity(0.6) :
+                            (isHoveringClear ? Color.red.opacity(0.35) : Color.white.opacity(0.06)),
+                            lineWidth: isHoveringClear ? 1.2 : 0.5
+                        )
+                )
+                .shadow(
+                    color: isHoveringClear ? Color.red.opacity(0.35) : Color.clear,
+                    radius: isHoveringClear ? 10 : 0,
+                    x: 0,
+                    y: isHoveringClear ? 3 : 0
+                )
             }
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "trash")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Clear")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .buttonStyle(PlainButtonStyle())
+            .scaleEffect(isPressingClear ? 0.88 : (isHoveringClear ? 1.06 : 1.0))
+            .onHover { hovering in
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                    isHoveringClear = hovering
+                }
             }
-            .foregroundColor(isHoveringClear ? .red.opacity(0.9) : .secondary.opacity(0.7))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isHoveringClear ? Color.red.opacity(0.12) : Color.secondary.opacity(0.08))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(isHoveringClear ? Color.red.opacity(0.25) : Color.white.opacity(0.06), lineWidth: 0.5)
-            )
+            .pressEvents {
+                withAnimation(.spring(response: 0.12, dampingFraction: 0.6)) {
+                    isPressingClear = true
+                }
+            } onRelease: {
+                withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
+                    isPressingClear = false
+                }
+            }
         }
-        .buttonStyle(PlainButtonStyle())
-        .onHover { isHoveringClear = $0 }
-        .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHoveringClear)
+    }
+
+    private func performClear() {
+        // Phase 1: button press + ripple
+        withAnimation(.spring(response: 0.12, dampingFraction: 0.6)) {
+            isPressingClear = true
+        }
+
+        // Phase 2: ripple ring burst
+        rippleScale = 0.3
+        rippleOpacity = 1.0
+        withAnimation(.easeOut(duration: 0.35)) {
+            rippleScale = 1.8
+            rippleOpacity = 0.0
+        }
+
+        // Phase 3: white flash
+        withAnimation(.easeIn(duration: 0.06)) {
+            flashOpacity = 0.45
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) {
+            withAnimation(.easeOut(duration: 0.25)) {
+                flashOpacity = 0.0
+            }
+        }
+
+        // Phase 4: content implodes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isClearing = true
+            }
+        }
+
+        // Phase 5: execute clear after animation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+            onClearAll()
+            withAnimation(.none) {
+                isClearing = false
+                isPressingClear = false
+            }
+        }
     }
 
     @ViewBuilder
@@ -313,5 +415,17 @@ struct ClipboardPreviewView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Press Event Modifier (macOS compatible)
+
+extension View {
+    func pressEvents(onPress: @escaping () -> Void, onRelease: @escaping () -> Void) -> some View {
+        self.simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in onPress() }
+                .onEnded { _ in onRelease() }
+        )
     }
 }
