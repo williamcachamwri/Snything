@@ -7,6 +7,7 @@ struct SearchView: View {
     @FocusState private var isSearchFocused: Bool
     @Namespace private var animationNamespace
     @State private var recentsTimer: Timer?
+    @State private var clipboardTimer: Timer?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -47,13 +48,7 @@ struct SearchView: View {
             KeyboardManager.shared.stopMonitoring()
             KeyboardManager.shared.onKeyDown = nil
             stopRecentsTimer()
-        }
-        .onChange(of: query) { _, newValue in
-            if newValue.isEmpty {
-                startRecentsTimer()
-            } else {
-                stopRecentsTimer()
-            }
+            stopClipboardTimer()
         }
         .background(Color.clear)
     }
@@ -77,7 +72,9 @@ struct SearchView: View {
                 ) {
                     if coordinator.showingClipboard {
                         query = ""
+                        stopClipboardTimer()
                         coordinator.showRecents()
+                        startRecentsTimer()
                     }
                 }
                 TabButton(
@@ -87,7 +84,9 @@ struct SearchView: View {
                 ) {
                     if !coordinator.showingClipboard {
                         query = ""
+                        stopRecentsTimer()
                         coordinator.showClipboardHistory()
+                        startClipboardTimer()
                     }
                 }
                 Spacer()
@@ -164,9 +163,13 @@ struct SearchView: View {
     private func handleQueryChange(_ newValue: String) {
         debounceTask?.cancel()
         if newValue.isEmpty {
+            stopClipboardTimer()
             coordinator.showRecents()
+            startRecentsTimer()
             return
         }
+        stopRecentsTimer()
+        stopClipboardTimer()
         debounceTask = Task {
             let delay = SettingsManager.shared.debounceNanoseconds
             try? await Task.sleep(nanoseconds: delay)
@@ -248,6 +251,26 @@ struct SearchView: View {
     private func stopRecentsTimer() {
         recentsTimer?.invalidate()
         recentsTimer = nil
+    }
+
+    private func startClipboardTimer() {
+        clipboardTimer?.invalidate()
+        clipboardTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            guard coordinator.showingClipboard else { return }
+            let items = ClipboardManager.shared.items
+            let currentIDs = coordinator.clipboardItems.map(\.id)
+            let newIDs = items.map(\.id)
+            if newIDs != currentIDs {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    coordinator.clipboardItems = items
+                }
+            }
+        }
+    }
+
+    private func stopClipboardTimer() {
+        clipboardTimer?.invalidate()
+        clipboardTimer = nil
     }
 
     private struct TabButton: View {
