@@ -23,6 +23,9 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
             syncLaunchAtLogin()
         }
     }
+    @AppStorage("snything.autoCheckUpdates") var autoCheckUpdates: Bool = true {
+        didSet { objectWillChange.send() }
+    }
 
     // Scopes stored as comma-separated paths
     @AppStorage("snything.searchScopes") private var scopesString: String = "/Applications,/Users,/opt,/usr/local,Library"

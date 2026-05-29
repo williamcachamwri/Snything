@@ -212,15 +212,14 @@ The release `.app` will be at `.build/Snything.app` and the DMG at `.build/Snyth
 
 ---
 
-## Continuous Integration
+## Auto-Update
 
-Every push to `main` triggers a GitHub Actions workflow that:
-1. Builds the release binary on `macos-latest`
-2. Packages the `.app` bundle
-3. Creates a compressed DMG
-4. Publishes (or updates) the `continuous` pre-release with the DMG attached
+Snything can automatically check for new releases on GitHub and install them for you:
 
-Tagged releases (`v*.*.*`) get their own GitHub Release with an auto-generated changelog grouped by commit type (Features, Bug Fixes, CI/Build, Chores).
+- **Check for Updates**: On launch, if enabled, the app queries the GitHub Releases API for the latest DMG.
+- **One-Click Install**: When an update is found, a notification appears. Clicking it downloads the new DMG, mounts it, replaces the app in `/Applications`, and relaunches.
+- **Toggle in Settings**: You can enable or disable automatic update checking from **Settings > General** at any time.
+- **Onboarding Choice**: During first-launch onboarding, you're asked whether you want automatic updates enabled.
 
 ---
 

@@ -163,6 +163,17 @@ struct GeneralSettingsView: View {
                 )
             )
 
+            SettingsToggleRow(
+                icon: "arrow.down.circle.fill",
+                iconColor: .cyan,
+                title: "Auto Check for Updates",
+                subtitle: "Notify when a new DMG release is available on GitHub",
+                isOn: Binding(
+                    get: { settings.autoCheckUpdates },
+                    set: { settings.autoCheckUpdates = $0 }
+                )
+            )
+
             SettingsSliderRow(
                 icon: "timer",
                 iconColor: .orange,

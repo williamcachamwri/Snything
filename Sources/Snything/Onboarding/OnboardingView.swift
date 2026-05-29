@@ -362,9 +362,10 @@ struct CompletionStepView: View {
     @State private var opacity: Double = 0
     @State private var glowScale: CGFloat = 0.5
     @StateObject private var launchAtLogin = LaunchAtLoginManager.shared
+    @StateObject private var settings = SettingsManager.shared
 
     var body: some View {
-        VStack(spacing: 28) {
+        VStack(spacing: 20) {
             ZStack {
                 GradientOrbView()
 
@@ -388,44 +389,25 @@ struct CompletionStepView: View {
             }
             .opacity(opacity)
 
-            // Launch at Login toggle
-            HStack(spacing: 10) {
-                Image(systemName: launchAtLogin.isEnabled ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(launchAtLogin.isEnabled ? Color.accentColor : Color.secondary.opacity(0.5))
-                    .animation(.easeOut(duration: 0.15), value: launchAtLogin.isEnabled)
+            VStack(spacing: 8) {
+                // Launch at Login toggle
+                optionRow(
+                    icon: "power",
+                    title: "Launch at Login",
+                    subtitle: "Start Snything automatically when you log in",
+                    isOn: $launchAtLogin.isEnabled
+                )
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Launch at Login")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .foregroundColor(.primary)
-                    Text("Start Snything automatically when you log in")
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.7))
-                }
-
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.secondary.opacity(0.05))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(
-                                launchAtLogin.isEnabled
-                                    ? Color.accentColor.opacity(0.25)
-                                    : Color.white.opacity(0.08),
-                                lineWidth: 1
-                            )
+                // Auto Check for Updates toggle
+                optionRow(
+                    icon: "arrow.down.circle.fill",
+                    title: "Auto Check for Updates",
+                    subtitle: "Notify when a new release is available",
+                    isOn: Binding(
+                        get: { settings.autoCheckUpdates },
+                        set: { settings.autoCheckUpdates = $0 }
                     )
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    launchAtLogin.isEnabled.toggle()
-                }
+                )
             }
             .opacity(opacity)
             .scaleEffect(scale)
@@ -445,6 +427,47 @@ struct CompletionStepView: View {
             }
             withAnimation(.easeOut(duration: 0.8).delay(0.1)) {
                 glowScale = 1.0
+            }
+        }
+    }
+
+    private func optionRow(icon: String, title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: isOn.wrappedValue ? "checkmark.square.fill" : "square")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(isOn.wrappedValue ? Color.accentColor : Color.secondary.opacity(0.5))
+                .animation(.easeOut(duration: 0.15), value: isOn.wrappedValue)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.secondary.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(
+                            isOn.wrappedValue
+                                ? Color.accentColor.opacity(0.25)
+                                : Color.white.opacity(0.08),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.15)) {
+                isOn.wrappedValue.toggle()
             }
         }
     }

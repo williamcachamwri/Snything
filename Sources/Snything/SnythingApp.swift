@@ -150,12 +150,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             rootView: SplashView {
                 self.closeOnboardingWindow()
                 self.setupSearchWindow()
+                self.checkForUpdatesIfEnabled()
             },
             size: NSSize(width: 420, height: 320)
         )
         self.onboardingWindow = splashWindow
         splashWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func checkForUpdatesIfEnabled() {
+        if SettingsManager.shared.autoCheckUpdates {
+            UpdateManager.shared.checkForUpdates(silent: true)
+        }
     }
 
     // MARK: - Settings
