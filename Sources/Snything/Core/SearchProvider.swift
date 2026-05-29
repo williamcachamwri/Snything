@@ -22,24 +22,30 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var keyboardFocusedIndex: Int = 0
     @Published var showPreview: Bool = false
     @Published var previewResult: SearchResult? = nil
-    @Published var showingRecents: Bool = false
+    @Published var showingClipboard: Bool = false
+
+    @Published var clipboardItems: [ClipboardItem] = []
+    @Published var selectedClipboardIndex: Int = 0
+    @Published var clipboardFocusedIndex: Int = 0
 
     private let engine = FastSearchEngine.shared
+    private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
 
-    func showRecents() {
-        let recents = RecentFilesManager.shared.recentResults()
-        let newPaths = recents.map(\.path)
-        let currentPaths = results.map(\.path)
-        guard newPaths != currentPaths else { return }
+    func showClipboardHistory() {
+        let items = clipboard.items
+        let currentIDs = clipboardItems.map(\.id)
+        let newIDs = items.map(\.id)
+        guard newIDs != currentIDs else { return }
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-            results = recents
-            showingRecents = true
-            selectedIndex = 0
-            keyboardFocusedIndex = 0
+            clipboardItems = items
+            showingClipboard = true
+            selectedClipboardIndex = 0
+            clipboardFocusedIndex = 0
             isSearching = false
             showPreview = false
             previewResult = nil
+            results = []
         }
     }
 
@@ -48,11 +54,11 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         engine.cancel()
 
         guard query.count >= 1 else {
-            showRecents()
+            showClipboardHistory()
             return
         }
 
-        showingRecents = false
+        showingClipboard = false
         isSearching = true
         selectedIndex = 0
         keyboardFocusedIndex = 0
@@ -64,8 +70,6 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         activeTask = Task { [weak self] in
             guard let self else { return }
 
-            // Debounce: wait 80ms for user to stop typing.
-            // If another keystroke arrives, this task is cancelled before search starts.
             try? await Task.sleep(nanoseconds: 80_000_000)
             guard !Task.isCancelled else { return }
 
@@ -86,33 +90,63 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     }
 
     func selectNext() {
-        guard !results.isEmpty else { return }
-        selectedIndex = (selectedIndex + 1) % results.count
-        keyboardFocusedIndex = selectedIndex
-        updatePreview()
+        if showingClipboard {
+            guard !clipboardItems.isEmpty else { return }
+            selectedClipboardIndex = (selectedClipboardIndex + 1) % clipboardItems.count
+            clipboardFocusedIndex = selectedClipboardIndex
+        } else {
+            guard !results.isEmpty else { return }
+            selectedIndex = (selectedIndex + 1) % results.count
+            keyboardFocusedIndex = selectedIndex
+            updatePreview()
+        }
     }
 
     func selectPrevious() {
-        guard !results.isEmpty else { return }
-        selectedIndex = (selectedIndex - 1 + results.count) % results.count
-        keyboardFocusedIndex = selectedIndex
-        updatePreview()
+        if showingClipboard {
+            guard !clipboardItems.isEmpty else { return }
+            selectedClipboardIndex = (selectedClipboardIndex - 1 + clipboardItems.count) % clipboardItems.count
+            clipboardFocusedIndex = selectedClipboardIndex
+        } else {
+            guard !results.isEmpty else { return }
+            selectedIndex = (selectedIndex - 1 + results.count) % results.count
+            keyboardFocusedIndex = selectedIndex
+            updatePreview()
+        }
     }
 
     func openSelected() {
-        guard results.indices.contains(selectedIndex) else { return }
-        let result = results[selectedIndex]
-        NSWorkspace.shared.open(result.url)
+        if showingClipboard {
+            guard clipboardItems.indices.contains(selectedClipboardIndex) else { return }
+            let item = clipboardItems[selectedClipboardIndex]
+            clipboard.pasteToClipboard(item)
+            NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
+        } else {
+            guard results.indices.contains(selectedIndex) else { return }
+            let result = results[selectedIndex]
+            NSWorkspace.shared.open(result.url)
+        }
     }
 
     func revealSelected() {
-        guard results.indices.contains(selectedIndex) else { return }
+        guard !showingClipboard, results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
         NSWorkspace.shared.selectFile(result.url.path, inFileViewerRootedAtPath: "")
     }
 
+    func deleteSelectedClipboardItem() {
+        guard showingClipboard, clipboardItems.indices.contains(selectedClipboardIndex) else { return }
+        let item = clipboardItems[selectedClipboardIndex]
+        clipboard.deleteItem(item)
+        clipboardItems = clipboard.items
+        if selectedClipboardIndex >= clipboardItems.count {
+            selectedClipboardIndex = max(0, clipboardItems.count - 1)
+        }
+        clipboardFocusedIndex = selectedClipboardIndex
+    }
+
     func togglePreview() {
-        guard results.indices.contains(selectedIndex) else { return }
+        guard !showingClipboard, results.indices.contains(selectedIndex) else { return }
         let result = results[selectedIndex]
         if showPreview && previewResult?.id == result.id {
             withAnimation(.easeOut(duration: 0.15)) {
