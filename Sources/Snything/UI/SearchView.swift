@@ -20,12 +20,18 @@ struct SearchView: View {
                     .padding(.horizontal, 12)
 
                 if coordinator.showingClipboard, let clipItem = coordinator.clipboardPreviewItem {
-                    ClipboardPreviewView(item: clipItem)
-                        .frame(maxWidth: 340, maxHeight: .infinity)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .trailing).combined(with: .opacity)
-                        ))
+                    ClipboardPreviewView(
+                        item: clipItem,
+                        onClearAll: {
+                            ClipboardManager.shared.clearAll()
+                            coordinator.showClipboardHistory()
+                        }
+                    )
+                    .frame(maxWidth: 340, maxHeight: .infinity)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .trailing).combined(with: .opacity)
+                    ))
                 } else if let previewResult = coordinator.previewResult {
                     PreviewView(result: previewResult)
                         .frame(maxWidth: 340, maxHeight: .infinity)
