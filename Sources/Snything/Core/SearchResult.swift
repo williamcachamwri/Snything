@@ -2,14 +2,6 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
-enum SearchActionType: String, Sendable {
-    case openFile
-    case openURL
-    case runShell
-    case pasteText
-    case none
-}
-
 struct SearchResult: Identifiable, Hashable, Sendable {
     var id: String { path }
     let url: URL
@@ -20,13 +12,11 @@ struct SearchResult: Identifiable, Hashable, Sendable {
     let modifiedDate: Date?
     let relevanceScore: Double
     let subtitle: String
-    let actionType: SearchActionType
-    let actionPayload: String
 
     var displayName: String { name }
     var parentPath: String { url.deletingLastPathComponent().path }
 
-    init(url: URL, name: String, path: String, kind: ResultKind, size: Int64?, modifiedDate: Date?, relevanceScore: Double, subtitle: String = "", actionType: SearchActionType = .openFile, actionPayload: String = "") {
+    init(url: URL, name: String, path: String, kind: ResultKind, size: Int64?, modifiedDate: Date?, relevanceScore: Double, subtitle: String = "") {
         self.url = url
         self.name = name
         self.path = path
@@ -35,8 +25,6 @@ struct SearchResult: Identifiable, Hashable, Sendable {
         self.modifiedDate = modifiedDate
         self.relevanceScore = relevanceScore
         self.subtitle = subtitle
-        self.actionType = actionType
-        self.actionPayload = actionPayload
     }
 
     enum ResultKind: String, Sendable {
@@ -49,9 +37,6 @@ struct SearchResult: Identifiable, Hashable, Sendable {
         case document
         case archive
         case code
-        case calculation
-        case command
-        case webSearch
     }
 
     static func kind(from url: URL) -> ResultKind {

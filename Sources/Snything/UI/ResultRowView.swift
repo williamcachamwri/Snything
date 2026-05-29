@@ -31,13 +31,9 @@ struct ResultRowView: View {
 
             if isSelected {
                 HStack(spacing: 6) {
-                    if result.actionType == .openFile {
-                        ActionBadge(icon: "arrow.up.doc", label: "Drag")
-                        ActionBadge(icon: "return", label: "Open")
-                        ActionBadge(icon: "space", label: "Preview")
-                    } else {
-                        ActionBadge(icon: "return", label: "Run")
-                    }
+                    ActionBadge(icon: "arrow.up.doc", label: "Drag")
+                    ActionBadge(icon: "return", label: "Open")
+                    ActionBadge(icon: "space", label: "Preview")
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
@@ -75,9 +71,7 @@ struct ResultRowView: View {
         .contentShape(Rectangle())
         .id(result.id)
         .onAppear {
-            if result.actionType == .openFile {
-                loadIcon()
-            }
+            loadIcon()
         }
         .scaleEffect(isHovered ? 1.005 : 1.0)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovered)
@@ -85,10 +79,7 @@ struct ResultRowView: View {
             isHovered = hover
         }
         .onDrag {
-            if result.actionType == .openFile {
-                return NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
-            }
-            return NSItemProvider()
+            NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
         }
     }
 
@@ -133,9 +124,6 @@ struct ResultRowView: View {
         case .archive: return "archivebox.fill"
         case .code: return "chevron.left.forwardslash.chevron.right"
         case .file: return "doc.fill"
-        case .calculation: return "equal.circle.fill"
-        case .command: return "terminal.fill"
-        case .webSearch: return "magnifyingglass.circle.fill"
         }
     }
 
@@ -150,9 +138,6 @@ struct ResultRowView: View {
         case .archive: return .gray
         case .code: return .green
         case .file: return .secondary
-        case .calculation: return .yellow
-        case .command: return .green
-        case .webSearch: return .accentColor
         }
     }
 }
