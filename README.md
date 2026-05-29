@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Sources/Snything/Resources/AppIcon.png" width="128" height="128" alt="Snything App Icon" />
+  <img src="Sources/Snything/Resources/AppIcon-transparent.png" width="128" height="128" alt="Snything App Icon" />
 </p>
 
 <h1 align="center">Snything</h1>

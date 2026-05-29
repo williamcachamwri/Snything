@@ -38,7 +38,7 @@ struct ResultListView: View {
                 .padding(.vertical, 4)
             }
             .background(Color.clear)
-            .onChange(of: coordinator.selectedIndex) { _, newValue in
+            .onChange(of: coordinator.keyboardFocusedIndex) { _, newValue in
                 if coordinator.results.indices.contains(newValue) {
                     withAnimation(.easeOut(duration: 0.12)) {
                         proxy.scrollTo(coordinator.results[newValue].id, anchor: .center)
