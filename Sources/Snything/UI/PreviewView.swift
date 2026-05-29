@@ -183,34 +183,8 @@ struct FolderPreviewView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let fm = FileManager.default
-        guard let contents = try? fm.contentsOfDirectory(
-            at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-            options: .skipsHiddenFiles
-        ) else { return }
-
-        let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
-
-        // Build tree (shallow: only 1 level deep for speed, expandable in future)
-        var children: [TreeNode] = []
-        for item in sorted {
-            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            let size = isDir ? nil : item.fileSize()
-            children.append(TreeNode(
-                name: item.lastPathComponent,
-                url: item,
-                isDirectory: isDir,
-                size: size
-            ))
-        }
-
-        let rootNode = TreeNode(name: url.lastPathComponent, url: url, isDirectory: true, children: children)
-
-        // Compute recursive stats
+        let rootNode = buildTree(at: url, depth: 0, maxDepth: 3, maxChildren: 80)
         let stats = computeRecursiveStats(at: url)
-
-        // Git info
         let git = detectGitStatus(at: url)
 
         await MainActor.run {
@@ -220,34 +194,6 @@ struct FolderPreviewView: View {
             self.dirCount = stats.dirCount
             self.gitInfo = git
         }
-    }
-
-    private func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
-        let fm = FileManager.default
-        var totalSize: Int64 = 0
-        var fileCount = 0
-        var dirCount = 0
-
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles],
-            errorHandler: nil
-        ) else { return (0, 0, 0) }
-
-        for case let item as URL in enumerator {
-            autoreleasepool {
-                if let values = try? item.resourceValues(forKeys: [.isDirectoryKey]), values.isDirectory == true {
-                    dirCount += 1
-                } else {
-                    fileCount += 1
-                    if let size = try? item.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += Int64(size)
-                    }
-                }
-            }
-        }
-        return (totalSize, fileCount, dirCount)
     }
 
     private func detectGitStatus(at root: URL) -> GitInfo? {
@@ -475,6 +421,58 @@ struct TreeNodeView: View {
     }
 }
 
+// MARK: - Tree Helpers
+
+func buildTree(at root: URL, depth: Int, maxDepth: Int, maxChildren: Int) -> TreeNode {
+    let fm = FileManager.default
+    var children: [TreeNode] = []
+
+    if depth < maxDepth,
+       let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: .skipsHiddenFiles) {
+        let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
+        for item in sorted.prefix(maxChildren) {
+            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            if isDir {
+                let child = buildTree(at: item, depth: depth + 1, maxDepth: maxDepth, maxChildren: maxChildren)
+                children.append(child)
+            } else {
+                let size = item.fileSize() ?? 0
+                children.append(TreeNode(name: item.lastPathComponent, url: item, isDirectory: false, size: size))
+            }
+        }
+    }
+
+    return TreeNode(name: root.lastPathComponent, url: root, isDirectory: true, children: children)
+}
+
+func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
+    let fm = FileManager.default
+    var totalSize: Int64 = 0
+    var fileCount = 0
+    var dirCount = 0
+
+    guard let enumerator = fm.enumerator(
+        at: root,
+        includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+        options: [.skipsHiddenFiles],
+        errorHandler: nil
+    ) else { return (0, 0, 0) }
+
+    for case let item as URL in enumerator {
+        autoreleasepool {
+            if let values = try? item.resourceValues(forKeys: [.isDirectoryKey]), values.isDirectory == true {
+                dirCount += 1
+            } else {
+                fileCount += 1
+                if let size = try? item.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                    totalSize += Int64(size)
+                }
+            }
+        }
+    }
+    return (totalSize, fileCount, dirCount)
+}
+
 struct GitInfo {
     let branch: String
     let modified: Int
@@ -636,56 +634,6 @@ struct AppBundlePreviewView: View {
         }
     }
 
-    private func buildTree(at root: URL, depth: Int, maxDepth: Int, maxChildren: Int) -> TreeNode {
-        let fm = FileManager.default
-        var children: [TreeNode] = []
-
-        if depth < maxDepth,
-           let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: .skipsHiddenFiles) {
-            let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
-            for item in sorted.prefix(maxChildren) {
-                let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-                if isDir {
-                    let child = buildTree(at: item, depth: depth + 1, maxDepth: maxDepth, maxChildren: maxChildren)
-                    children.append(child)
-                } else {
-                    let size = item.fileSize() ?? 0
-                    children.append(TreeNode(name: item.lastPathComponent, url: item, isDirectory: false, size: size))
-                }
-            }
-        }
-
-        return TreeNode(name: root.lastPathComponent, url: root, isDirectory: true, children: children)
-    }
-
-    private func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
-        let fm = FileManager.default
-        var totalSize: Int64 = 0
-        var fileCount = 0
-        var dirCount = 0
-
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles],
-            errorHandler: nil
-        ) else { return (0, 0, 0) }
-
-        for case let item as URL in enumerator {
-            autoreleasepool {
-                if let values = try? item.resourceValues(forKeys: [.isDirectoryKey]), values.isDirectory == true {
-                    dirCount += 1
-                } else {
-                    fileCount += 1
-                    if let size = try? item.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += Int64(size)
-                    }
-                }
-            }
-        }
-        return (totalSize, fileCount, dirCount)
-    }
-
     private func byteCount(_ bytes: Int64) -> String {
         let formatter = ByteCountFormatter()
         formatter.allowedUnits = [.useAll]
@@ -804,31 +752,8 @@ struct FileContextPreviewView: View {
         isLoading = true
         defer { isLoading = false }
 
-        let fm = FileManager.default
         let parent = parentURL
-
-        guard let contents = try? fm.contentsOfDirectory(
-            at: parent,
-            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-            options: .skipsHiddenFiles
-        ) else { return }
-
-        let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
-
-        var children: [TreeNode] = []
-        for item in sorted {
-            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
-            let size = isDir ? nil : item.fileSize()
-            children.append(TreeNode(
-                name: item.lastPathComponent,
-                url: item,
-                isDirectory: isDir,
-                size: size
-            ))
-        }
-
-        let rootNode = TreeNode(name: parent.lastPathComponent, url: parent, isDirectory: true, children: children)
-
+        let rootNode = buildTree(at: parent, depth: 0, maxDepth: 3, maxChildren: 80)
         let stats = computeRecursiveStats(at: parent)
 
         await MainActor.run {
@@ -838,34 +763,6 @@ struct FileContextPreviewView: View {
             self.fileCount = stats.fileCount
             self.dirCount = stats.dirCount
         }
-    }
-
-    private func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
-        let fm = FileManager.default
-        var totalSize: Int64 = 0
-        var fileCount = 0
-        var dirCount = 0
-
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles],
-            errorHandler: nil
-        ) else { return (0, 0, 0) }
-
-        for case let item as URL in enumerator {
-            autoreleasepool {
-                if let values = try? item.resourceValues(forKeys: [.isDirectoryKey]), values.isDirectory == true {
-                    dirCount += 1
-                } else {
-                    fileCount += 1
-                    if let size = try? item.resourceValues(forKeys: [.fileSizeKey]).fileSize {
-                        totalSize += Int64(size)
-                    }
-                }
-            }
-        }
-        return (totalSize, fileCount, dirCount)
     }
 
     private func iconForFile(_ url: URL) -> String {
