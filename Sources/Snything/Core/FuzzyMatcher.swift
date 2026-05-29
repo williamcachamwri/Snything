@@ -2,63 +2,79 @@ import Foundation
 
 enum FuzzyMatcher {
     /// Ultra-fast fuzzy match scoring.
-    /// O(query × candidate) worst case with early exit.
+    /// O(query * candidate) worst case with early exit.
     /// Returns 0 for no match; higher is better.
     static func score(query: String, candidate: String) -> Double {
         let q = query.lowercased()
         let c = candidate.lowercased()
         guard !q.isEmpty, !c.isEmpty else { return 0 }
+        let qCount = q.count
+        let cCount = c.count
+        guard qCount <= cCount else { return 0 }
 
         if c == q { return 1000 }
         if c.hasPrefix(q) {
-            return 500 + (Double(q.count) / Double(c.count)) * 200
+            return 500 + (Double(qCount) / Double(cCount)) * 200
         }
 
-        let words = c.components(separatedBy: CharacterSet(charactersIn: " ._-"))
-        for word in words {
-            if word.hasPrefix(q) {
-                return 400 + (Double(q.count) / Double(c.count)) * 150
+        // Word boundary prefix check
+        let separators: CharacterSet = [" ", "_", "-", "."]
+        var inWord = false
+        var wordStart = c.startIndex
+        for (i, ch) in c.enumerated() {
+            let idx = c.index(c.startIndex, offsetBy: i)
+            if separators.contains(ch.unicodeScalars.first!) {
+                if inWord {
+                    let word = String(c[wordStart..<idx])
+                    if word.hasPrefix(q) {
+                        return 400 + (Double(qCount) / Double(cCount)) * 150
+                    }
+                }
+                inWord = false
+            } else if !inWord {
+                inWord = true
+                wordStart = idx
+            }
+        }
+        if inWord {
+            let lastWord = String(c[wordStart...])
+            if lastWord.hasPrefix(q) {
+                return 400 + (Double(qCount) / Double(cCount)) * 150
             }
         }
 
         if c.contains(q) {
-            return 300 + (Double(q.count) / Double(c.count)) * 100
+            return 300 + (Double(qCount) / Double(cCount)) * 100
         }
 
-        var qIdx = q.startIndex
-        var cIdx = c.startIndex
-        var base: Double = 100
-        var consecutive: Double = 0
-        var lastMatch: String.Index?
+        // Fuzzy: all query chars in order
+        var qi = 0
+        var ci = 0
         var matched = 0
+        var lastMatchCi = -1
+        var consecutive: Double = 0
 
-        while qIdx < q.endIndex && cIdx < c.endIndex {
-            if q[qIdx] == c[cIdx] {
+        let qChars = Array(q)
+        let cChars = Array(c)
+
+        while qi < qCount && ci < cCount {
+            if qChars[qi] == cChars[ci] {
                 matched += 1
-                if let last = lastMatch {
-                    let dist = c.distance(from: last, to: cIdx)
+                if lastMatchCi >= 0 {
+                    let dist = ci - lastMatchCi
                     if dist == 1 { consecutive += 15 }
                     else if dist <= 3 { consecutive += 5 }
                 }
-                if cIdx == c.startIndex {
-                    base += 25
-                } else {
-                    let prev = c.index(before: cIdx)
-                    let pc = c[prev]
-                    if pc == " " || pc == "-" || pc == "_" || pc == "." {
-                        base += 20
-                    }
-                }
-                lastMatch = cIdx
-                q.formIndex(after: &qIdx)
+                lastMatchCi = ci
+                qi += 1
             }
-            c.formIndex(after: &cIdx)
+            ci += 1
         }
 
-        if matched == q.count {
-            let gapPenalty = Double(c.count - q.count) * 0.3
-            return max(10, base + consecutive - gapPenalty)
-        }
-        return 0
+        guard matched == qCount else { return 0 }
+        let gapPenalty = Double(cCount - qCount) * 0.3
+        return max(10, 100 + consecutive - gapPenalty)
     }
 }
+
+
