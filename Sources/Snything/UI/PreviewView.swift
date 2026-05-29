@@ -19,9 +19,9 @@ struct PreviewView: View {
             case .code:
                 CodePreviewView(url: result.url)
                     .id(result.url)
-            default:
-                GenericPreviewView(result: result)
-                    .id(result.id)
+            case .file, .document, .archive, .audio, .video:
+                FileContextPreviewView(url: result.url)
+                    .id(result.url)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -38,6 +38,7 @@ struct FolderPreviewView: View {
     @State private var dirCount: Int = 0
     @State private var gitInfo: GitInfo? = nil
     @State private var isLoading = true
+    @State private var selectedURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -88,7 +89,9 @@ struct FolderPreviewView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(tree!.children) { child in
-                            TreeNodeView(node: child, depth: 0)
+                            TreeNodeView(node: child, depth: 0, selectedURL: $selectedURL, onOpen: { url in
+                                NSWorkspace.shared.open(url)
+                            })
                         }
                     }
                     .padding(.horizontal, 12)
@@ -330,66 +333,112 @@ struct TreeNode: Identifiable {
 struct TreeNodeView: View {
     let node: TreeNode
     let depth: Int
+    @Binding var selectedURL: URL?
+    let onOpen: (URL) -> Void
     @State private var isExpanded: Bool = false
+
+    private var isSelected: Bool {
+        selectedURL == node.url
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 4) {
-                ForEach(0..<depth, id: \.self) { _ in
-                    Text("  ")
-                        .font(.system(size: 12, design: .monospaced))
-                }
-
-                if node.isDirectory && !node.children.isEmpty {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.secondary.opacity(0.5))
-                        .frame(width: 14)
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                isExpanded.toggle()
-                            }
-                        }
-                } else {
-                    Text(" ")
-                        .frame(width: 14)
-                }
-
-                Image(systemName: node.isDirectory ? "folder.fill" : iconForFile(node.url))
-                    .font(.system(size: 11))
-                    .foregroundColor(node.isDirectory ? .blue : colorForFile(node.url))
-                    .frame(width: 16)
-
-                Text(node.name)
-                    .font(.system(size: 12, weight: node.isDirectory ? .semibold : .medium, design: .rounded))
-                    .foregroundColor(.primary.opacity(0.9))
-                    .lineLimit(1)
-
-                Spacer()
-
-                if let size = node.size {
-                    Text(byteCount(size))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.secondary.opacity(0.02))
-            .cornerRadius(4)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if node.isDirectory {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isExpanded.toggle()
-                    }
-                }
-            }
+            rowView
 
             if isExpanded && !node.children.isEmpty {
                 ForEach(node.children) { child in
-                    TreeNodeView(node: child, depth: depth + 1)
+                    TreeNodeView(node: child, depth: depth + 1, selectedURL: $selectedURL, onOpen: onOpen)
                 }
+            }
+        }
+    }
+
+    private var rowView: some View {
+        HStack(spacing: 4) {
+            // Indentation
+            ForEach(0..<depth, id: \.self) { _ in
+                Text("  ")
+                    .font(.system(size: 12, design: .monospaced))
+            }
+
+            // Disclosure triangle (separate tap target)
+            if node.isDirectory && !node.children.isEmpty {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(.secondary.opacity(0.5))
+                    .frame(width: 14)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            isExpanded.toggle()
+                        }
+                    }
+            } else {
+                Text(" ")
+                    .frame(width: 14)
+            }
+
+            // File/Folder icon
+            Image(systemName: node.isDirectory ? "folder.fill" : iconForFile(node.url))
+                .font(.system(size: 11))
+                .foregroundColor(node.isDirectory ? .blue : colorForFile(node.url))
+                .frame(width: 16)
+
+            // Name
+            Text(node.name)
+                .font(.system(size: 12, weight: node.isDirectory ? .semibold : .medium, design: .rounded))
+                .foregroundColor(.primary.opacity(0.9))
+                .lineLimit(1)
+
+            Spacer()
+
+            // Size
+            if let size = node.size {
+                Text(byteCount(size))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.02))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .stroke(isSelected ? Color.accentColor.opacity(0.35) : Color.clear, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedURL = node.url
+            if node.isDirectory {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isExpanded.toggle()
+                }
+            }
+        }
+        .highPriorityGesture(
+            TapGesture(count: 2).onEnded {
+                onOpen(node.url)
+            }
+        )
+        .onDrag {
+            let provider = NSItemProvider(object: node.url as NSURL)
+            provider.suggestedName = node.name
+            return provider
+        }
+        .contextMenu {
+            Button("Open") {
+                onOpen(node.url)
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.selectFile(node.url.path, inFileViewerRootedAtPath: "")
+            }
+            Divider()
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(node.url.path, forType: .string)
             }
         }
     }
@@ -447,6 +496,7 @@ struct AppBundlePreviewView: View {
     @State private var fileCount: Int = 0
     @State private var dirCount: Int = 0
     @State private var isLoading = true
+    @State private var selectedURL: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -491,7 +541,9 @@ struct AppBundlePreviewView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(tree!.children) { child in
-                            TreeNodeView(node: child, depth: 0)
+                            TreeNodeView(node: child, depth: 0, selectedURL: $selectedURL, onOpen: { url in
+                                NSWorkspace.shared.open(url)
+                            })
                         }
                     }
                     .padding(.horizontal, 12)
@@ -632,6 +684,212 @@ struct AppBundlePreviewView: View {
             }
         }
         return (totalSize, fileCount, dirCount)
+    }
+
+    private func byteCount(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useAll]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+}
+
+// MARK: - File Context Preview (parent folder tree + highlighted file)
+
+struct FileContextPreviewView: View {
+    let url: URL
+    @State private var tree: TreeNode? = nil
+    @State private var selectedURL: URL? = nil
+    @State private var parentSize: Int64 = 0
+    @State private var fileCount: Int = 0
+    @State private var dirCount: Int = 0
+    @State private var isLoading = true
+
+    private var fileName: String { url.lastPathComponent }
+    private var parentURL: URL { url.deletingLastPathComponent() }
+    private var fileSize: Int64? { url.fileSize() }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider()
+                .background(Color.white.opacity(0.08))
+
+            if isLoading {
+                Spacer()
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Scanning folder structure...")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                Spacer()
+            } else if tree == nil || tree!.children.isEmpty {
+                Spacer()
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        Image(systemName: "folder")
+                            .font(.system(size: 28))
+                            .foregroundColor(.secondary.opacity(0.4))
+                        Text("Empty folder")
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.6))
+                    }
+                    Spacer()
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(tree!.children) { child in
+                            TreeNodeView(node: child, depth: 0, selectedURL: $selectedURL, onOpen: { targetURL in
+                                NSWorkspace.shared.open(targetURL)
+                            })
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+        .background(Color.secondary.opacity(0.04))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .task(id: url) {
+            await loadData()
+        }
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: iconForFile(url))
+                    .font(.system(size: 20))
+                    .foregroundColor(colorForFile(url))
+                Text(fileName)
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            HStack(spacing: 12) {
+                if let size = fileSize {
+                    Label(byteCount(size), systemImage: "doc")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+                Label("in \(parentURL.lastPathComponent)", systemImage: "folder")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                Label("\(fileCount)f / \(dirCount)d", systemImage: "arrow.down.circle")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.7))
+            }
+        }
+    }
+
+    private func loadData() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        let fm = FileManager.default
+        let parent = parentURL
+
+        guard let contents = try? fm.contentsOfDirectory(
+            at: parent,
+            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+            options: .skipsHiddenFiles
+        ) else { return }
+
+        let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
+
+        var children: [TreeNode] = []
+        for item in sorted {
+            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
+            let size = isDir ? nil : item.fileSize()
+            children.append(TreeNode(
+                name: item.lastPathComponent,
+                url: item,
+                isDirectory: isDir,
+                size: size
+            ))
+        }
+
+        let rootNode = TreeNode(name: parent.lastPathComponent, url: parent, isDirectory: true, children: children)
+
+        let stats = computeRecursiveStats(at: parent)
+
+        await MainActor.run {
+            self.tree = rootNode
+            self.selectedURL = url
+            self.parentSize = stats.size
+            self.fileCount = stats.fileCount
+            self.dirCount = stats.dirCount
+        }
+    }
+
+    private func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
+        let fm = FileManager.default
+        var totalSize: Int64 = 0
+        var fileCount = 0
+        var dirCount = 0
+
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+            options: [.skipsHiddenFiles],
+            errorHandler: nil
+        ) else { return (0, 0, 0) }
+
+        for case let item as URL in enumerator {
+            autoreleasepool {
+                if let values = try? item.resourceValues(forKeys: [.isDirectoryKey]), values.isDirectory == true {
+                    dirCount += 1
+                } else {
+                    fileCount += 1
+                    if let size = try? item.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                        totalSize += Int64(size)
+                    }
+                }
+            }
+        }
+        return (totalSize, fileCount, dirCount)
+    }
+
+    private func iconForFile(_ url: URL) -> String {
+        switch SearchResult.kind(from: url) {
+        case .image: return "photo"
+        case .video: return "film"
+        case .audio: return "music.note"
+        case .document: return "doc.text"
+        case .code: return "chevron.left.forwardslash.chevron.right"
+        case .archive: return "archivebox"
+        default: return "doc"
+        }
+    }
+
+    private func colorForFile(_ url: URL) -> Color {
+        switch SearchResult.kind(from: url) {
+        case .image: return .pink
+        case .video: return .red
+        case .audio: return .orange
+        case .document: return .cyan
+        case .code: return .green
+        case .archive: return .gray
+        default: return .secondary
+        }
     }
 
     private func byteCount(_ bytes: Int64) -> String {
