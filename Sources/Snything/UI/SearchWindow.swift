@@ -29,6 +29,7 @@ final class SearchWindowController: NSWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.becomesKeyOnlyIfNeeded = false
         panel.acceptsMouseMovedEvents = true
+        panel.isReleasedWhenClosed = false
 
         let hosting = NSHostingView(rootView: SearchContainerView())
         hosting.frame = NSRect(x: 0, y: 0, width: 780, height: 560)

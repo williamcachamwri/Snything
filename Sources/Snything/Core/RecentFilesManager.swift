@@ -2,41 +2,53 @@ import Foundation
 
 final class RecentFilesManager {
     static let shared = RecentFilesManager()
-    private let key = "snything.recentFilePaths"
     private let maxCount = 20
 
     private init() {}
 
-    var recentPaths: [String] {
-        get { UserDefaults.standard.stringArray(forKey: key) ?? [] }
-        set {
-            let trimmed = Array(newValue.prefix(maxCount))
-            UserDefaults.standard.set(trimmed, forKey: key)
-        }
-    }
-
-    func recordAccess(url: URL) {
-        var paths = recentPaths
-        let path = url.path
-        paths.removeAll { $0 == path }
-        paths.insert(path, at: 0)
-        recentPaths = Array(paths.prefix(maxCount))
-    }
-
     func recentResults() -> [SearchResult] {
         let fm = FileManager.default
-        return recentPaths.compactMap { path in
-            guard fm.fileExists(atPath: path) else { return nil }
-            let url = URL(fileURLWithPath: path)
-            return SearchResult(
-                url: url,
-                name: url.lastPathComponent,
-                path: path,
-                kind: SearchResult.kind(from: url),
-                size: url.fileSize(),
-                modifiedDate: url.modDate(),
-                relevanceScore: 0
-            )
+        let home = fm.homeDirectoryForCurrentUser
+        let dirs = [
+            home.appendingPathComponent("Downloads"),
+            home.appendingPathComponent("Desktop"),
+            home.appendingPathComponent("Documents"),
+            home.appendingPathComponent("Pictures"),
+        ]
+
+        var results: [SearchResult] = []
+        for dir in dirs {
+            guard let urls = try? fm.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { continue }
+
+            for url in urls {
+                guard let values = try? url.resourceValues(
+                    forKeys: [.contentModificationDateKey, .fileSizeKey, .isDirectoryKey]
+                ) else { continue }
+
+                let modDate = values.contentModificationDate
+                let size = values.fileSize.map(Int64.init)
+                let isDir = values.isDirectory ?? false
+                let kind: SearchResult.ResultKind = isDir ? .folder : SearchResult.kind(from: url)
+
+                results.append(SearchResult(
+                    url: url,
+                    name: url.lastPathComponent,
+                    path: url.path,
+                    kind: kind,
+                    size: size,
+                    modifiedDate: modDate,
+                    relevanceScore: 0
+                ))
+            }
         }
+
+        return results
+            .sorted { ($0.modifiedDate ?? .distantPast) > ($1.modifiedDate ?? .distantPast) }
+            .prefix(maxCount)
+            .map { $0 }
     }
 }
