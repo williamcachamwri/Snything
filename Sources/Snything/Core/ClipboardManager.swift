@@ -124,21 +124,43 @@ final class ClipboardManager {
             }
         }
 
-        if let image = pasteboard.readObjects(forClasses: [NSImage.self], options: nil)?.first as? NSImage {
-            let size = image.size
-            let px = Int(max(size.width, size.height))
-            return ClipboardItem(
-                id: UUID().uuidString,
-                content: "Image",
-                type: .image,
-                sourceAppName: appName,
-                sourceBundleID: bundleID,
-                timestamp: Date(),
-                characterCount: px
-            )
+        // Try multiple image pasteboard types — readObjects(NSImage) doesn't work in background
+        let imageTypes: [NSPasteboard.PasteboardType] = [.tiff, .png, .init("public.jpeg"), .init("public.image")]
+        for imgType in imageTypes {
+            if let data = pasteboard.data(forType: imgType),
+               let image = NSImage(data: data) {
+                let size = image.size
+                let px = Int(max(size.width, size.height))
+                // Persist image to app support for preview
+                let imagePath = persistImageData(data, ext: imgType == .tiff ? "tiff" : (imgType == .png ? "png" : "jpg"))
+                return ClipboardItem(
+                    id: UUID().uuidString,
+                    content: imagePath ?? "Image",
+                    type: .image,
+                    sourceAppName: appName,
+                    sourceBundleID: bundleID,
+                    timestamp: Date(),
+                    characterCount: px
+                )
+            }
         }
 
         return nil
+    }
+
+    private func persistImageData(_ data: Data, ext: String) -> String? {
+        let fm = FileManager.default
+        guard let supportDir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Snything", isDirectory: true) else { return nil }
+        try? fm.createDirectory(at: supportDir, withIntermediateDirectories: true)
+        let filename = "clipboard_\(UUID().uuidString).\(ext)"
+        let url = supportDir.appendingPathComponent(filename)
+        do {
+            try data.write(to: url)
+            return url.path
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Actions

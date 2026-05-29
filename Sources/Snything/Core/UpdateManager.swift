@@ -16,6 +16,11 @@ final class UpdateManager: ObservableObject {
     private let releasesPage = "https://github.com/williamcachamwri/Snything/releases/latest"
     private let lastPromptedTagKey = "snything.lastPromptedReleaseTag"
 
+    /// Current installed app version from Info.plist (e.g. "1.0.8")
+    private var currentAppVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    }
+
     private init() {}
 
     // MARK: - Public API
@@ -58,9 +63,17 @@ final class UpdateManager: ObservableObject {
                     return
                 }
 
+                let version = tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
+
+                // Skip if already running the latest version
+                if version == self.currentAppVersion {
+                    self.statusMessage = "You're on the latest version (v\(version))."
+                    self.finishCheck()
+                    return
+                }
+
                 self.findDMGAsset(in: json)
 
-                let version = tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
                 self.alertVersion = version
                 self.alertReleaseNotes = json["body"] as? String ?? ""
                 self.showAlert = true

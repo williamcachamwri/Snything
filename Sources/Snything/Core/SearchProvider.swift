@@ -28,6 +28,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var clipboardItems: [ClipboardItem] = []
     @Published var selectedClipboardIndex: Int = 0
     @Published var clipboardFocusedIndex: Int = 0
+    @Published var clipboardPreviewItem: ClipboardItem? = nil
 
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared
@@ -174,17 +175,33 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     }
 
     func togglePreview() {
-        guard !showingClipboard, results.indices.contains(selectedIndex) else { return }
-        let result = results[selectedIndex]
-        if showPreview && previewResult?.id == result.id {
-            withAnimation(.easeOut(duration: 0.15)) {
-                showPreview = false
-                previewResult = nil
+        if showingClipboard {
+            guard clipboardItems.indices.contains(selectedClipboardIndex) else { return }
+            let item = clipboardItems[selectedClipboardIndex]
+            if showPreview && clipboardPreviewItem?.id == item.id {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showPreview = false
+                    clipboardPreviewItem = nil
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showPreview = true
+                    clipboardPreviewItem = item
+                }
             }
         } else {
-            withAnimation(.easeOut(duration: 0.15)) {
-                showPreview = true
-                previewResult = result
+            guard results.indices.contains(selectedIndex) else { return }
+            let result = results[selectedIndex]
+            if showPreview && previewResult?.id == result.id {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showPreview = false
+                    previewResult = nil
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    showPreview = true
+                    previewResult = result
+                }
             }
         }
     }
