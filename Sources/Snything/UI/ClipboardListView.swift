@@ -55,12 +55,19 @@ struct ClipboardRowView: View {
     private let iconSize: CGFloat = 32
 
     @State private var appIcon: NSImage? = nil
+    @State private var thumbnailImage: NSImage? = nil
 
     var body: some View {
         HStack(spacing: 12) {
-            // Source app icon (or fallback to type icon)
+            // Thumbnail for images, app icon for everything else
             ZStack {
-                if let appIcon {
+                if item.type == .image, let thumbnailImage {
+                    Image(nsImage: thumbnailImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: iconSize, height: iconSize)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else if let appIcon {
                     Image(nsImage: appIcon)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -140,11 +147,26 @@ struct ClipboardRowView: View {
         )
         .contentShape(Rectangle())
         .onAppear {
+            loadThumbnail()
             loadIcon()
         }
     }
 
+    private func loadThumbnail() {
+        guard item.type == .image else { return }
+        let path = item.content
+        guard path != "Image", FileManager.default.fileExists(atPath: path) else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let image = NSImage(contentsOfFile: path) else { return }
+            let resized = image.resized(to: NSSize(width: self.iconSize * 2, height: self.iconSize * 2))
+            DispatchQueue.main.async {
+                self.thumbnailImage = resized
+            }
+        }
+    }
+
     private func loadIcon() {
+        guard item.type != .image else { return }
         guard !item.sourceBundleID.isEmpty else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: item.sourceBundleID) else { return }
