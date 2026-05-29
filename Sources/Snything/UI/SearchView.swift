@@ -6,6 +6,7 @@ struct SearchView: View {
     @State private var debounceTask: Task<Void, Never>?
     @FocusState private var isSearchFocused: Bool
     @Namespace private var animationNamespace
+    @State private var recentsTimer: Timer?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -30,11 +31,20 @@ struct SearchView: View {
             isSearchFocused = true
             setupKeyboardMonitor()
             coordinator.showRecents()
+            startRecentsTimer()
         }
         .onDisappear {
             coordinator.cancel()
             KeyboardManager.shared.stopMonitoring()
             KeyboardManager.shared.onKeyDown = nil
+            stopRecentsTimer()
+        }
+        .onChange(of: query) { _, newValue in
+            if newValue.isEmpty {
+                startRecentsTimer()
+            } else {
+                stopRecentsTimer()
+            }
         }
         .background(Color.clear)
     }
@@ -145,6 +155,21 @@ struct SearchView: View {
                 return false
             }
         }
+    }
+
+    private func startRecentsTimer() {
+        recentsTimer?.invalidate()
+        recentsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            guard coordinator.showingRecents else { return }
+            withAnimation(.easeOut(duration: 0.15)) {
+                coordinator.showRecents()
+            }
+        }
+    }
+
+    private func stopRecentsTimer() {
+        recentsTimer?.invalidate()
+        recentsTimer = nil
     }
 
     @ViewBuilder

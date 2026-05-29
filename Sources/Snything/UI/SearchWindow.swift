@@ -25,7 +25,7 @@ final class SearchWindowController: NSWindowController {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.center()
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.becomesKeyOnlyIfNeeded = false
         panel.acceptsMouseMovedEvents = true
