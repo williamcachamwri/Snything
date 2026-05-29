@@ -16,6 +16,9 @@ let package = Package(
             path: "Sources/Snything",
             resources: [
                 .process("Resources")
+            ],
+            linkerSettings: [
+                .linkedFramework("ServiceManagement")
             ]
         ),
         .testTarget(
