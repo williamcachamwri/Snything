@@ -73,18 +73,20 @@ final class FastSearchEngine: @unchecked Sendable {
             var allResults: [SearchResult] = []
 
             await withTaskGroup(of: [SearchResult].self) { group in
-                // Thread 1: Spotlight name search — PRIMARY, covers EVERY file on Mac
+                // Thread 1: Spotlight metadata search
                 group.addTask {
                     await self.runMdfindName(query: q, maxResults: maxResults)
                 }
 
-                // Thread 2: App cache fuzzy — covers display names Spotlight might miss
+                // Thread 2: App cache fuzzy
                 group.addTask {
                     await self.scanApplications(query: q, maxResults: 100)
                 }
 
-                // Content search is now included in the primary name predicate above
-                // (kMDItemTextContent is part of runMdfindName), so no separate phase needed.
+                // Thread 3: Filesystem scan for hidden files + fast filename fallback
+                group.addTask {
+                    await self.runFindFilesystem(query: q, maxResults: maxResults)
+                }
 
                 for await results in group {
                     if Task.isCancelled { break }
@@ -196,6 +198,74 @@ final class FastSearchEngine: @unchecked Sendable {
                 kind: SearchResult.kind(from: url),
                 size: url.fileSize(), modifiedDate: url.modDate(),
                 relevanceScore: 10.0
+            ))
+        }
+        return results
+    }
+
+    // MARK: - Filesystem Scan (find hidden files + fast filename fallback)
+
+    private func runFindFilesystem(query: String, maxResults: Int) async -> [SearchResult] {
+        let scopes = SettingsManager.shared.searchScopes
+        guard !scopes.isEmpty else { return [] }
+
+        let escaped = query
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "'\\''")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        // Build find command: scan all scopes, limited depth, skip heavy dirs
+        let scopeArgs = scopes.map { "'\($0)'" }.joined(separator: " ")
+        let script = """
+        find \(scopeArgs) -maxdepth 3 \
+          -not -path '*/node_modules/*' \
+          -not -path '*/.git/*' \
+          -not -path '*/DerivedData/*' \
+          -not -path '*/build/*' \
+          -not -path '*/.build/*' \
+          -iname '*\(escaped)*' \
+          2>/dev/null | head -n \(maxResults)
+        """
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+
+        processLock.withLock {
+            activeProcesses.insert(process)
+        }
+        defer {
+            processLock.withLock {
+                activeProcesses.remove(process)
+            }
+        }
+
+        do { try process.run() } catch { return [] }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard !Task.isCancelled else { return [] }
+
+        let rawPaths = String(data: data, encoding: .utf8)?
+            .components(separatedBy: .newlines)
+            .filter { !$0.isEmpty } ?? []
+
+        let fm = FileManager.default
+        var results: [SearchResult] = []
+        results.reserveCapacity(min(rawPaths.count, maxResults))
+
+        for path in rawPaths.prefix(maxResults) {
+            guard !Task.isCancelled else { break }
+            let url = URL(fileURLWithPath: String(path))
+            guard fm.fileExists(atPath: url.path) else { continue }
+            results.append(SearchResult(
+                url: url, name: url.lastPathComponent, path: url.path,
+                kind: SearchResult.kind(from: url),
+                size: url.fileSize(), modifiedDate: url.modDate(),
+                relevanceScore: 1.0
             ))
         }
         return results
