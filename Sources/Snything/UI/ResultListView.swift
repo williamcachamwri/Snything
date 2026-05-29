@@ -4,6 +4,22 @@ struct ResultListView: View {
     @ObservedObject var coordinator: SearchCoordinator
     var namespace: Namespace.ID
 
+    private var recentTransition: AnyTransition {
+        .asymmetric(
+            insertion: .offset(y: -18)
+                .combined(with: .opacity)
+                .combined(with: .scale(scale: 0.94, anchor: .top)),
+            removal: .opacity.combined(with: .scale(scale: 0.94))
+        )
+    }
+
+    private var searchTransition: AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .scale(scale: 0.96)).combined(with: .offset(y: 8)),
+            removal: .opacity.combined(with: .scale(scale: 0.96))
+        )
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
@@ -16,10 +32,7 @@ struct ResultListView: View {
                         )
                         .id(result.id)
                         .contentShape(Rectangle())
-                        .transition(.asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.96)).combined(with: .offset(y: 8)),
-                            removal: .opacity.combined(with: .scale(scale: 0.96))
-                        ))
+                        .transition(coordinator.showingRecents ? recentTransition : searchTransition)
                         .onTapGesture {
                             withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
                                 coordinator.selectedIndex = index
