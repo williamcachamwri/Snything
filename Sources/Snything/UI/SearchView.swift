@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SearchView: View {
     @StateObject private var coordinator = SearchCoordinator()
@@ -73,7 +74,7 @@ struct SearchView: View {
             HStack(spacing: 8) {
                 TabButton(
                     title: "Files",
-                    icon: "magnifyingglass",
+                    icon: .system("magnifyingglass"),
                     isActive: !coordinator.showingApplications && !coordinator.showingClipboard
                 ) {
                     if coordinator.showingApplications || coordinator.showingClipboard {
@@ -85,7 +86,7 @@ struct SearchView: View {
                 }
                 TabButton(
                     title: "Applications",
-                    icon: "app",
+                    icon: .nsImage(NSWorkspace.shared.icon(for: UTType.applicationBundle)),
                     isActive: coordinator.showingApplications
                 ) {
                     if !coordinator.showingApplications {
@@ -101,7 +102,7 @@ struct SearchView: View {
                 }
                 TabButton(
                     title: "Clipboard",
-                    icon: "doc.on.clipboard",
+                    icon: .system("doc.on.clipboard"),
                     isActive: coordinator.showingClipboard
                 ) {
                     if !coordinator.showingClipboard {
@@ -317,16 +318,29 @@ struct SearchView: View {
     }
 
     private struct TabButton: View {
+        enum TabIcon {
+            case system(String)
+            case nsImage(NSImage)
+        }
+
         let title: String
-        let icon: String
+        let icon: TabIcon
         let isActive: Bool
         let action: () -> Void
 
         var body: some View {
             Button(action: action) {
                 HStack(spacing: 4) {
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
+                    switch icon {
+                    case .system(let name):
+                        Image(systemName: name)
+                            .font(.system(size: 10, weight: .semibold))
+                    case .nsImage(let nsImage):
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 14, height: 14)
+                    }
                     Text(title)
                         .font(.system(size: 11, weight: .semibold, design: .rounded))
                 }
