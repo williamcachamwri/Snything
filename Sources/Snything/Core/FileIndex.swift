@@ -1,19 +1,50 @@
 import Foundation
 import os
 
-/// Ultra-fast in-memory filename index.
-/// Loads filenames on first search, then serves queries from RAM without filesystem I/O.
+/// Comprehensive in-memory filename index.
+/// Scans ALL of /Users recursively — every file, every folder, no depth limit.
+/// ~1-3M entries typical, ~50-150MB RAM, indexes in ~5-15 seconds on SSD.
 final class FileIndex: @unchecked Sendable {
     static let shared = FileIndex()
 
     private var entries: [IndexEntry] = []
     private var isIndexing = false
+    private var isReady = false
     private let indexLock = OSAllocatedUnfairLock<Void>(initialState: ())
 
-    private let excludedPaths: Set<String> = [
+    /// Only skip true system / cache junk. Everything else gets indexed.
+    private let excludedExact: Set<String> = [
         "/System/Volumes", "/Volumes", "/.Spotlight-V100", "/.Trashes",
         "/private/var/db", "/private/var/vm", "/dev", "/net", "/home",
-        "/usr", "/bin", "/sbin", "/lib", "/System/Library", "/Library/Caches"
+        "/usr", "/bin", "/sbin", "/lib", "/tmp", "/var/tmp",
+    ]
+
+    private let excludedPrefixes: Set<String> = [
+        "/System/Library",              // system frameworks
+        "/Library/Caches",              // global caches
+        "/usr/local/Caskroom",          // homebrew cask downloads
+        "/usr/local/Cellar",            // homebrew cellar
+        "/opt/homebrew",                // Apple Silicon homebrew
+    ]
+
+    private let excludedSuffixes: Set<String> = [
+        ".git/objects",                 // git object store
+        ".git/hooks",
+        "node_modules",                 // npm deps
+        "vendor/bundle",                // ruby deps
+        ".build/checkouts",             // swift PM
+        ".build/repositories",
+        "__pycache__",                  // python cache
+        ".gradle",                      // gradle cache
+        ".m2/repository",               // maven cache
+        ".npm",                        // npm cache
+        "Library/Caches",               // user caches
+        "Library/Containers",           // sandbox containers
+        "Library/Application Support/Google", // browser data
+        "Library/Application Support/Firefox",
+        "Library/Application Support/Chrome",
+        "Library/Safari",
+        "Library/Logs",
     ]
 
     private init() {}
@@ -40,9 +71,9 @@ final class FileIndex: @unchecked Sendable {
         let localEntries: [IndexEntry]
         localEntries = indexLock.withLock { self.entries }
 
-        // If index is still empty (building), fallback to quick filesystem scan
+        // If index hasn't finished building yet, use direct filesystem fallback
         if localEntries.isEmpty {
-            return quickScan(query: lowerQ, maxResults: maxResults)
+            return deepScan(query: lowerQ, maxResults: maxResults)
         }
 
         for entry in localEntries {
@@ -58,7 +89,7 @@ final class FileIndex: @unchecked Sendable {
             } else if name.contains(lowerQ) {
                 score = 300 + (Double(lowerQ.count) / Double(name.count)) * 100
             } else {
-                // Fast fuzzy: check if all query chars exist in order
+                // Fast fuzzy: all query chars in order
                 var qi = lowerQ.startIndex
                 var ci = name.startIndex
                 var matched = 0
@@ -101,30 +132,46 @@ final class FileIndex: @unchecked Sendable {
         return results
     }
 
-    /// Fallback scan when index is still building
-    private func quickScan(query: String, maxResults: Int) -> [SearchResult] {
+    /// Deep filesystem scan when index is still building.
+    /// Recurses into ALL subdirectories of /Users and home.
+    private func deepScan(query: String, maxResults: Int) -> [SearchResult] {
         let home = NSHomeDirectory()
-        let dirs = [home, home + "/Downloads", home + "/Desktop", home + "/Documents", home + "/Pictures"]
+        let scopes = [home, "/Users"]
         let fm = FileManager.default
         var results: [SearchResult] = []
         results.reserveCapacity(maxResults)
 
-        for dir in dirs {
+        for scope in scopes {
             guard !Task.isCancelled else { break }
-            guard let urls = try? fm.contentsOfDirectory(at: URL(fileURLWithPath: dir), includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey], options: .skipsHiddenFiles) else { continue }
-            for url in urls {
+            guard let enumerator = fm.enumerator(
+                at: URL(fileURLWithPath: scope),
+                includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey],
+                options: [],
+                errorHandler: nil
+            ) else { continue }
+
+            for case let url as URL in enumerator {
                 if Task.isCancelled { break }
-                let name = url.lastPathComponent.lowercased()
-                guard name.contains(query) else { continue }
-                let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey])
-                let kind: SearchResult.ResultKind = (values?.isDirectory ?? false) ? .folder : SearchResult.kind(from: url)
-                let score: Double = name.hasPrefix(query) ? 400 : 200
-                results.append(SearchResult(
-                    url: url, name: url.lastPathComponent, path: url.path,
-                    kind: kind, size: values?.fileSize.map(Int64.init), modifiedDate: values?.contentModificationDate,
-                    relevanceScore: score
-                ))
                 if results.count >= maxResults { return results }
+
+                autoreleasepool {
+                    let path = url.path
+                    if self.shouldSkip(path) {
+                        enumerator.skipDescendants()
+                        return
+                    }
+                    let name = url.lastPathComponent.lowercased()
+                    guard name.contains(query) else { return }
+
+                    let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey])
+                    let kind: SearchResult.ResultKind = (values?.isDirectory ?? false) ? .folder : SearchResult.kind(from: url)
+                    let score: Double = name.hasPrefix(query) ? 400 : 200
+                    results.append(SearchResult(
+                        url: url, name: url.lastPathComponent, path: url.path,
+                        kind: kind, size: values?.fileSize.map(Int64.init), modifiedDate: values?.contentModificationDate,
+                        relevanceScore: score
+                    ))
+                }
             }
         }
         return results
@@ -134,7 +181,7 @@ final class FileIndex: @unchecked Sendable {
 
     func ensureIndexed() {
         indexLock.withLock { _ in
-            guard entries.isEmpty, !isIndexing else { return }
+            guard !isReady, !isIndexing else { return }
             isIndexing = true
         }
 
@@ -144,38 +191,26 @@ final class FileIndex: @unchecked Sendable {
         }
     }
 
+    var indexIsReady: Bool {
+        indexLock.withLock { self.isReady }
+    }
+
     private func buildIndex() {
         let home = NSHomeDirectory()
-        // Scan user's home deeply + common system app dirs
-        let scopes = [
-            home,
-            home + "/Downloads",
-            home + "/Desktop",
-            home + "/Documents",
-            home + "/Pictures",
-            home + "/Movies",
-            home + "/Music",
-            home + "/Library/CloudStorage",
-            "/Applications",
-            "/System/Applications",
-            "/System/Library/CoreServices",
-            "/Users",
-        ]
+        let scopes = [home, "/Users"]
 
         var newEntries: [IndexEntry] = []
-        newEntries.reserveCapacity(200_000)
+        newEntries.reserveCapacity(1_000_000)
 
         for scope in scopes {
             guard !Task.isCancelled else { break }
             scanAndIndex(at: scope, into: &newEntries)
         }
 
-        // Sort by name for consistent ordering
-        newEntries.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-
         indexLock.withLock { _ in
             self.entries = newEntries
             self.isIndexing = false
+            self.isReady = true
         }
     }
 
@@ -186,13 +221,12 @@ final class FileIndex: @unchecked Sendable {
         guard let enumerator = fm.enumerator(
             at: rootURL,
             includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey, .isDirectoryKey],
-            options: [.skipsHiddenFiles, .skipsPackageDescendants],
+            options: [],  // NO skips — index everything including hidden files and inside packages
             errorHandler: nil
         ) else { return }
 
         for case let url as URL in enumerator {
             if Task.isCancelled { break }
-            if entries.count >= 500_000 { break }
 
             autoreleasepool {
                 let path = url.path
@@ -216,8 +250,17 @@ final class FileIndex: @unchecked Sendable {
     }
 
     private func shouldSkip(_ path: String) -> Bool {
-        for ex in excludedPaths {
+        // Exact path match
+        for ex in excludedExact {
+            if path == ex { return true }
+        }
+        // Prefix match
+        for ex in excludedPrefixes {
             if path.hasPrefix(ex) { return true }
+        }
+        // Suffix / component match
+        for ex in excludedSuffixes {
+            if path.contains(ex) { return true }
         }
         return false
     }

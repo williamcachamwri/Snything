@@ -8,7 +8,7 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
     @AppStorage("snything.searchDelay") var searchDelay: Double = 60 {
         didSet { objectWillChange.send() }
     }
-    @AppStorage("snything.maxResults") var maxResults: Double = 200 {
+    @AppStorage("snything.maxResults") var maxResults: Double = 500 {
         didSet { objectWillChange.send() }
     }
     @AppStorage("snything.showHiddenFiles") var showHiddenFiles: Bool = false {
@@ -51,7 +51,7 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
 
     func resetToDefaults() {
         searchDelay = 60
-        maxResults = 200
+        maxResults = 500
         showHiddenFiles = false
         showPreviewOnSelect = false
         launchAtLogin = false

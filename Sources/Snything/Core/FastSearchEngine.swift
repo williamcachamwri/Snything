@@ -53,23 +53,22 @@ final class FastSearchEngine: @unchecked Sendable {
             allResults.append(contentsOf: self.builtInCommands(query: q))
             allResults.append(contentsOf: self.webSearches(query: q))
 
-            // Phase 2: Spotlight mdfind — PRIMARY source for files.
-            // Spotlight already indexes all of /Users, /Applications, etc.
-            // This is the fastest and most complete source.
-            async let spotResults = self.runMdfind(query: q, maxResults: maxResults)
-            let spot = await spotResults
-            allResults.append(contentsOf: spot)
-
-            // Phase 3: Cached apps (fuzzy from RAM, only if mdfind missed them)
-            let appResults = await self.scanApplications(query: q, maxResults: maxResults)
-            allResults.append(contentsOf: appResults)
-
-            // Phase 4: FileIndex — supplement anything mdfind missed
+            // Phase 2: FileIndex — PRIMARY source. Scans ALL of /Users in RAM.
+            // This is the most comprehensive and fastest source once built.
             let indexResults = FileIndex.shared.search(query: q, maxResults: maxResults)
             allResults.append(contentsOf: indexResults)
 
+            // Phase 3: Cached apps (fuzzy from RAM, covers app display names)
+            let appResults = await self.scanApplications(query: q, maxResults: maxResults)
+            allResults.append(contentsOf: appResults)
+
+            // Phase 4: Spotlight mdfind — supplement for anything the index missed
+            async let spotResults = self.runMdfind(query: q, maxResults: maxResults / 2)
+            let spot = await spotResults
+            allResults.append(contentsOf: spot)
+
             // Phase 5: Content search — very limited, only for long queries
-            if q.count >= 6 {
+            if q.count >= 8 {
                 let content = await self.runContentSearch(query: q, maxResults: 2)
                 allResults.append(contentsOf: content)
             }
