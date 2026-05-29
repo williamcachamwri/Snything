@@ -19,6 +19,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var results: [SearchResult] = []
     @Published var isSearching: Bool = false
     @Published var selectedIndex: Int = 0
+    @Published var keyboardFocusedIndex: Int = 0
     @Published var showPreview: Bool = false
     @Published var previewResult: SearchResult? = nil
 
@@ -68,12 +69,14 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func selectNext() {
         guard !results.isEmpty else { return }
         selectedIndex = (selectedIndex + 1) % results.count
+        keyboardFocusedIndex = selectedIndex
         updatePreview()
     }
 
     func selectPrevious() {
         guard !results.isEmpty else { return }
         selectedIndex = (selectedIndex - 1 + results.count) % results.count
+        keyboardFocusedIndex = selectedIndex
         updatePreview()
     }
 
