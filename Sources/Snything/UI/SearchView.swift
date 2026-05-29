@@ -88,7 +88,11 @@ struct SearchView: View {
                 self.isSearchFocused = false
                 return true
             case 36: // return
-                coordinator.openSelected()
+                if event.modifierFlags.contains(.command) {
+                    coordinator.revealSelected()
+                } else {
+                    coordinator.openSelected()
+                }
                 return true
             case 49: // space
                 if self.isSearchFocused {

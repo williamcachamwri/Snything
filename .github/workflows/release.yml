@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Select Xcode version
         run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
@@ -43,6 +45,72 @@ jobs:
           echo "DMG created:"
           ls -lh ".build/Snything-Release.dmg"
 
+      - name: Generate Changelog
+        id: changelog
+        run: |
+          TAG_RANGE=""
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            # Continuous build: use last 15 commits on main
+            TAG_RANGE="HEAD~15..HEAD"
+          else
+            # Tagged release: commits since previous tag
+            PREV_TAG=$(git describe --tags --abbrev=0 ${{ github.sha }}^ 2>/dev/null || echo "")
+            if [ -n "$PREV_TAG" ]; then
+              TAG_RANGE="${PREV_TAG}..HEAD"
+            else
+              TAG_RANGE="HEAD~20..HEAD"
+            fi
+          fi
+
+          NOTES_FILE="/tmp/release_notes.md"
+          echo "## What's Changed" > "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+
+          # Group commits by type
+          FEATS=$(git log --pretty=format:"- %s" "$TAG_RANGE" --grep="^feat" -- | sed 's/feat: //g; s/feat(\([^)]*\)): //g')
+          FIXES=$(git log --pretty=format:"- %s" "$TAG_RANGE" --grep="^fix" -- | sed 's/fix: //g; s/fix(\([^)]*\)): //g')
+          CHORES=$(git log --pretty=format:"- %s" "$TAG_RANGE" --grep="^chore" -- | sed 's/chore: //g; s/chore(\([^)]*\)): //g')
+          CI=$(git log --pretty=format:"- %s" "$TAG_RANGE" --grep="^ci" -- | sed 's/ci: //g; s/ci(\([^)]*\)): //g')
+
+          if [ -n "$FEATS" ]; then
+            echo "### Features" >> "$NOTES_FILE"
+            echo "$FEATS" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+          fi
+          if [ -n "$FIXES" ]; then
+            echo "### Bug Fixes" >> "$NOTES_FILE"
+            echo "$FIXES" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+          fi
+          if [ -n "$CI" ]; then
+            echo "### CI / Build" >> "$NOTES_FILE"
+            echo "$CI" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+          fi
+          if [ -n "$CHORES" ]; then
+            echo "### Chores" >> "$NOTES_FILE"
+            echo "$CHORES" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+          fi
+
+          # Catch anything that didn't match the above prefixes
+          OTHER=$(git log --pretty=format:"- %s" "$TAG_RANGE" | grep -v "^\- feat" | grep -v "^\- fix" | grep -v "^\- chore" | grep -v "^\- ci" || true)
+          if [ -n "$OTHER" ]; then
+            echo "### Other Changes" >> "$NOTES_FILE"
+            echo "$OTHER" >> "$NOTES_FILE"
+            echo "" >> "$NOTES_FILE"
+          fi
+
+          echo "---" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "**Commit:** \`${{ github.sha }}\`" >> "$NOTES_FILE"
+          echo "" >> "$NOTES_FILE"
+          echo "**Full Changelog:** https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${{ github.sha }}" >> "$NOTES_FILE"
+
+          cat "$NOTES_FILE"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Continuous pre-release: updated on every push to main
       - name: Update Continuous Release
         if: github.ref == 'refs/heads/main'
@@ -52,16 +120,10 @@ jobs:
           git push origin :refs/tags/continuous 2>/dev/null || true
           git tag -f continuous "${{ github.sha }}"
           git push origin continuous --force
-          NOTES_FILE="/tmp/release_notes.md"
-          printf '%s\n\n- Commit: \`%s\`\n- Date: %s UTC\n' \
-            "Automated build from latest commit on main." \
-            "${{ github.sha }}" \
-            "$(date -u +'%Y-%m-%d %H:%M:%S')" \
-            > "$NOTES_FILE"
           gh release create continuous \
             ".build/Snything-Release.dmg" \
             --title "Snything Continuous Build" \
-            --notes-file "$NOTES_FILE" \
+            --notes-file "/tmp/release_notes.md" \
             --prerelease
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -75,6 +137,6 @@ jobs:
           gh release create "$VERSION" \
             ".build/Snything-Release.dmg" \
             --title "Snything ${VERSION}" \
-            --generate-notes
+            --notes-file "/tmp/release_notes.md"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
