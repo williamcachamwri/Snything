@@ -281,7 +281,6 @@ struct ChangelogMarkdownView: View {
         let lines = text.components(separatedBy: .newlines)
         var blocks: [ChangelogBlock] = []
         var currentParagraph = ""
-        var bulletIndex = 0
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
