@@ -82,36 +82,41 @@ final class FileIndex: @unchecked Sendable {
             let name = entry.lowerName
             var score: Double = 0
 
+            let nCount = name.count
+            let qCount = lowerQ.count
+
             if name == lowerQ {
                 score = 1000
             } else if name.hasPrefix(lowerQ) {
-                score = 500 + (Double(lowerQ.count) / Double(name.count)) * 200
+                score = 500 + (Double(qCount) / Double(nCount)) * 200
             } else if name.contains(lowerQ) {
-                score = 300 + (Double(lowerQ.count) / Double(name.count)) * 100
+                score = 300 + (Double(qCount) / Double(nCount)) * 100
             } else {
-                // Fast fuzzy: all query chars in order
-                var qi = lowerQ.startIndex
-                var ci = name.startIndex
+                // Fast fuzzy: all query chars in order (safe, no String.Index)
+                let qChars = Array(lowerQ)
+                let nChars = Array(name)
+                var qi = 0
+                var ci = 0
                 var matched = 0
-                var lastMatch: String.Index?
+                var lastMatchCi = -1
                 var consecutive: Double = 0
 
-                while qi < lowerQ.endIndex && ci < name.endIndex {
-                    if lowerQ[qi] == name[ci] {
+                while qi < qCount && ci < nCount {
+                    if qChars[qi] == nChars[ci] {
                         matched += 1
-                        if let last = lastMatch {
-                            let dist = name.distance(from: last, to: ci)
+                        if lastMatchCi >= 0 {
+                            let dist = ci - lastMatchCi
                             if dist == 1 { consecutive += 15 }
                             else if dist <= 3 { consecutive += 5 }
                         }
-                        lastMatch = ci
-                        name.formIndex(after: &qi)
+                        lastMatchCi = ci
+                        qi += 1
                     }
-                    name.formIndex(after: &ci)
+                    ci += 1
                 }
 
-                guard matched == lowerQ.count else { continue }
-                let gapPenalty = Double(name.count - lowerQ.count) * 0.3
+                guard matched == qCount else { continue }
+                let gapPenalty = Double(nCount - qCount) * 0.3
                 score = max(10, 100 + consecutive - gapPenalty)
             }
 

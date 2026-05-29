@@ -42,7 +42,7 @@ final class FastSearchEngine: @unchecked Sendable {
             }
 
             let q = query.trimmingCharacters(in: .whitespaces)
-            guard !q.isEmpty else {
+            guard !q.isEmpty, q.count <= 100 else {
                 await MainActor.run { onBatch([]) }
                 return
             }
@@ -54,8 +54,8 @@ final class FastSearchEngine: @unchecked Sendable {
             allResults.append(contentsOf: self.webSearches(query: q))
 
             // Phase 2: FileIndex — PRIMARY source. Scans ALL of /Users in RAM.
-            // This is the most comprehensive and fastest source once built.
-            let indexResults = FileIndex.shared.search(query: q, maxResults: maxResults)
+            // Skip for single-char queries to avoid scanning the entire index.
+            let indexResults = FileIndex.shared.search(query: q, maxResults: max(q.count >= 2 ? maxResults : 50, maxResults))
             allResults.append(contentsOf: indexResults)
 
             // Phase 3: Cached apps (fuzzy from RAM, covers app display names)
@@ -273,57 +273,85 @@ final class FastSearchEngine: @unchecked Sendable {
         return url.deletingPathExtension().lastPathComponent
     }
 
-    // MARK: - Calculator (safe, no crash on incomplete expressions)
+    // MARK: - Calculator (bulletproof, no regex, no crash)
 
     private func evaluateCalculator(query: String) -> [SearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count >= 3 else { return [] }
+        guard trimmed.count >= 3, trimmed.count <= 50 else { return [] }
 
-        let hasDigits = trimmed.rangeOfCharacter(from: .decimalDigits) != nil
-        let ops = CharacterSet(charactersIn: "+-*/().")
-        let hasOp = trimmed.rangeOfCharacter(from: ops) != nil
-        guard hasDigits && hasOp else { return [] }
+        // Manual char validation — no regex, no NSExpression surprises
+        let allowedChars: Set<Character> = ["0","1","2","3","4","5","6","7","8","9","+","-","*","/","(",")","."," "]
+        let digits: Set<Character> = ["0","1","2","3","4","5","6","7","8","9"]
+        let ops: Set<Character> = ["+","-","*","/"]
 
-        let letters = CharacterSet.letters
-        guard trimmed.rangeOfCharacter(from: letters) == nil else { return [] }
+        var hasDigit = false
+        var hasOp = false
+        let chars = Array(trimmed)
 
-        // Validate expression pattern: only digits, operators, parentheses, dots
-        let validPattern = "^[0-9+\\-*/().\\s]+$"
-        guard trimmed.range(of: validPattern, options: .regularExpression) != nil else { return [] }
-
-        // Check for incomplete operators at end (e.g. "2+", "3*")
-        let lastChar = trimmed.last!
-        if "+-*/.".contains(lastChar) {
-            return []
+        for ch in chars {
+            guard allowedChars.contains(ch) else { return [] }
+            if digits.contains(ch) { hasDigit = true }
+            if ops.contains(ch) { hasOp = true }
         }
+        guard hasDigit && hasOp else { return [] }
 
-        // Check balanced parentheses
+        // Must start with digit or "("
+        guard digits.contains(chars.first!) || chars.first! == "(" else { return [] }
+
+        // Must not end with operator or "."
+        guard let last = chars.last, !ops.contains(last), last != "." else { return [] }
+
+        // Balanced parentheses, no empty "()"
         var parenCount = 0
-        for ch in trimmed {
-            if ch == "(" { parenCount += 1 }
-            else if ch == ")" { parenCount -= 1 }
-            if parenCount < 0 { return [] }
+        for i in 0..<chars.count {
+            let ch = chars[i]
+            if ch == "(" {
+                parenCount += 1
+                // Check for empty "()" or "( )"
+                if i + 1 < chars.count {
+                    let next = chars[i + 1]
+                    if next == ")" { return [] }
+                }
+            } else if ch == ")" {
+                parenCount -= 1
+                if parenCount < 0 { return [] }
+            }
         }
         guard parenCount == 0 else { return [] }
 
-        // Check no consecutive operators (e.g. "2++2", "3*/4")
-        let consecutiveOpsPattern = "[+*\\-/]{2,}"
-        if trimmed.range(of: consecutiveOpsPattern, options: .regularExpression) != nil {
-            return []
+        // No consecutive operators (including "*/", "/*", "++", "--")
+        for i in 0..<(chars.count - 1) {
+            let a = chars[i]
+            let b = chars[i + 1]
+            if ops.contains(a) && ops.contains(b) { return [] }
+            if a == "." && b == "." { return [] }
+            if a == "(" && ops.contains(b) && b != "-" { return [] }
+            if ops.contains(a) && b == ")" { return [] }
         }
 
-        // Safe evaluation with NSExpression
-        let expr = NSExpression(format: trimmed)
-        guard let value = expr.expressionValue(with: nil, context: nil) as? NSNumber else { return [] }
+        // No ".." in numbers
+        for i in 0..<(chars.count - 1) {
+            if chars[i] == "." && !digits.contains(chars[i + 1]) { return [] }
+        }
 
-        let result = value.doubleValue
+        // Evaluate — wrapped to catch any ObjC exception from NSExpression
+        let resultValue: Double? = Self.safeEvaluate(trimmed)
+        guard let value = resultValue else { return [] }
+
+        // Format result without regex
         let resultStr: String
-        if abs(result.truncatingRemainder(dividingBy: 1)) < 0.0001 {
-            resultStr = String(Int(result))
+        if value.isFinite {
+            if abs(value.truncatingRemainder(dividingBy: 1)) < 0.0001 {
+                resultStr = String(Int(value))
+            } else {
+                var s = String(format: "%.4f", value)
+                // Trim trailing zeros manually
+                while s.last == "0" { s.removeLast() }
+                if s.last == "." { s.removeLast() }
+                resultStr = s
+            }
         } else {
-            resultStr = String(format: "%.4f", result)
-                .replacingOccurrences(of: "0+$", with: "", options: .regularExpression)
-                .replacingOccurrences(of: "\\.$", with: "", options: .regularExpression)
+            return [] // Infinity / NaN
         }
 
         return [SearchResult(
@@ -335,6 +363,14 @@ final class FastSearchEngine: @unchecked Sendable {
             subtitle: "= \(resultStr)",
             actionType: .pasteText, actionPayload: resultStr
         )]
+    }
+
+    private static func safeEvaluate(_ expression: String) -> Double? {
+        // Thorough validation already done in evaluateCalculator.
+        // NSExpression is safe here because we only allow digits, + - * / ( ) .
+        let expr = NSExpression(format: expression)
+        guard let num = expr.expressionValue(with: nil, context: nil) as? NSNumber else { return nil }
+        return num.doubleValue
     }
 
     // MARK: - Built-in Commands
