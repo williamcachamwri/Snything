@@ -15,9 +15,8 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
     @Published var indexedCount = 0
     @Published var totalImages = 0
 
-    private var index: [String: String] = [:] // path -> OCR text
+    private var index: [String: String] = [:]
     private let lockQueue = DispatchQueue(label: "snything.ocrindex.lock")
-    private let workQueue = DispatchQueue(label: "snything.ocrindex", qos: .utility)
     private let storageKey = "snything.ocrIndex"
     private var indexTask: Task<Void, Never>?
 
@@ -31,9 +30,17 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         let lower = query.lowercased()
         var copy: [String: String] = [:]
         lockQueue.sync { copy = index }
-        return copy.compactMap { path, text in
+        let paths = copy.compactMap { path, text in
             text.lowercased().contains(lower) ? path : nil
         }
+        if paths.isEmpty && index.isEmpty {
+            print("[OCR] Index is empty, no OCR results for '\(query)'")
+        } else if paths.isEmpty {
+            print("[OCR] Index has \(index.count) entries but no match for '\(query)'")
+        } else {
+            print("[OCR] Found \(paths.count) matches for '\(query)'")
+        }
+        return paths
     }
 
     func ocrText(for path: String) -> String? {
@@ -42,63 +49,75 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         return result
     }
 
+    var indexCount: Int {
+        var count = 0
+        lockQueue.sync { count = index.count }
+        return count
+    }
+
     // MARK: - Indexing
 
-    func startBackgroundIndex(for paths: [String]) {
+    func startBackgroundIndex(for scopes: [String]) {
         indexTask?.cancel()
         indexTask = Task { [weak self] in
             guard let self else { return }
-            let imagePaths = self.collectImagePaths(from: paths)
+            print("[OCR] Starting background image discovery...")
+            let imagePaths = await self.discoverImagesViaMdfind(scopes: scopes)
+            print("[OCR] Found \(imagePaths.count) images to index")
             await self.buildIndex(for: imagePaths)
         }
     }
 
-    private func collectImagePaths(from paths: [String]) -> [String] {
-        let imageExts = Set(["png", "jpg", "jpeg", "gif", "tiff", "webp", "heic", "bmp"])
-        let fm = FileManager.default
-        var result: [String] = []
-        result.reserveCapacity(1000)
+    /// Use mdfind to quickly discover images in the search scopes.
+    /// This leverages Spotlight's indexed metadata, so it's much faster than filesystem enumeration.
+    private func discoverImagesViaMdfind(scopes: [String]) async -> [String] {
+        let imageUTIs = [
+            "public.png", "public.jpeg", "public.tiff", "public.gif",
+            "public.webp", "public.heic", "public.bmp", "com.compuserve.gif"
+        ]
+        // Build predicate: (kMDItemContentType == 'public.png' || ...) && (kMDItemPath =~ '/scope1/.*' || ...)
+        let typePred = imageUTIs.map { "kMDItemContentType == '\($0)'" }.joined(separator: " || ")
+        let scopePred = scopes.map { scope in
+            let clean = scope.trimmingCharacters(in: .whitespaces)
+            return "kMDItemPath =~ '^\(clean)/.*'"
+        }.joined(separator: " || ")
+        let predicate = "(\(typePred)) && (\(scopePred))"
 
-        for path in paths {
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: path, isDirectory: &isDir) else { continue }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        process.arguments = [predicate]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
 
-            if isDir.boolValue {
-                // Enumerate directory up to depth 4, skip heavy dirs
-                let url = URL(fileURLWithPath: path)
-                if let enumerator = fm.enumerator(
-                    at: url,
-                    includingPropertiesForKeys: [.isRegularFileKey],
-                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
-                ) {
-                    var count = 0
-                    for case let fileURL as URL in enumerator {
-                        let ext = fileURL.pathExtension.lowercased()
-                        if imageExts.contains(ext) {
-                            result.append(fileURL.path)
-                            count += 1
-                            if count >= 500 { break } // Limit per scope
-                        }
-                        // Limit depth by checking path components
-                        let depth = fileURL.pathComponents.count - url.pathComponents.count
-                        if depth > 4 { enumerator.skipDescendants() }
-                    }
-                }
-            } else {
-                let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
-                if imageExts.contains(ext) {
-                    result.append(path)
-                }
-            }
+        do {
+            try process.run()
+        } catch {
+            print("[OCR] mdfind failed to start: \(error)")
+            return []
         }
-        return result
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        guard !Task.isCancelled else { return [] }
+
+        let paths = String(data: data, encoding: .utf8)?
+            .components(separatedBy: .newlines)
+            .filter { !$0.isEmpty } ?? []
+
+        print("[OCR] mdfind returned \(paths.count) image paths")
+        return paths
     }
 
     private func buildIndex(for imagePaths: [String]) async {
-        await MainActor.run { isIndexing = true }
-        await MainActor.run { indexedCount = 0 }
-        await MainActor.run { totalImages = imagePaths.count }
+        await MainActor.run {
+            isIndexing = true
+            indexedCount = 0
+            totalImages = imagePaths.count
+        }
 
+        var localCount = 0
         for path in imagePaths {
             guard !Task.isCancelled else { break }
 
@@ -111,24 +130,34 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
                 lockQueue.sync { index[path] = text }
             }
 
-            await MainActor.run {
-                indexedCount += 1
+            localCount += 1
+            await MainActor.run { indexedCount = localCount }
+
+            // Save incremental progress every 50 images
+            if localCount % 50 == 0 {
+                saveIndex()
+                print("[OCR] Indexed \(localCount)/\(imagePaths.count) images")
             }
         }
 
         saveIndex()
+
+        await MainActor.run { indexedCount = localCount }
+        print("[OCR] Done. Indexed \(localCount) images. Total in store: \(indexCount)")
 
         await MainActor.run { isIndexing = false }
     }
 
     private func performOCR(path: String) async -> String {
         let url = URL(fileURLWithPath: path)
-        guard let cgImage = NSImage(contentsOf: url)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+        guard let nsImage = NSImage(contentsOf: url),
+              let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
             return ""
         }
 
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .fast // Fast mode for indexing
+        request.recognitionLevel = .fast
         request.usesLanguageCorrection = true
         request.recognitionLanguages = ["en", "vi", "zh-Hans", "ja", "ko"]
 
@@ -163,6 +192,7 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
                 index[entry.path] = entry.text
             }
         }
+        print("[OCR] Loaded \(entries.count) entries from cache")
     }
 
     func invalidate(path: String) {

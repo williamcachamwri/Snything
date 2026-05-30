@@ -37,7 +37,7 @@ final class ToastManager: ObservableObject {
     func dismiss() {
         dismissTask?.cancel()
         isVisible = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
             self?.currentToast = nil
             self?.presentNext()
         }
@@ -45,8 +45,7 @@ final class ToastManager: ObservableObject {
 
     private func presentNext() {
         guard !queue.isEmpty else {
-            // Hide panel when queue is empty
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { [weak self] in
                 self?.toastPanel?.orderOut(nil)
             }
             return
@@ -55,7 +54,7 @@ final class ToastManager: ObservableObject {
         currentToast = toast
         ensurePanel()
         isVisible = true
-        toastPanel?.makeKeyAndOrderFront(nil)
+        toastPanel?.orderFront(nil)
 
         dismissTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
@@ -66,62 +65,90 @@ final class ToastManager: ObservableObject {
 
     private func ensurePanel() {
         if toastPanel == nil {
-            toastPanel = ToastPanel(manager: self)
+            toastPanel = ToastPanel()
         }
         toastPanel?.positionAtBottomCenter()
     }
 }
 
-final class ToastPanel: NSPanel {
-    private weak var manager: ToastManager?
+// MARK: - Toast Panel
 
-    init(manager: ToastManager) {
+final class ToastPanel: NSPanel {
+    private var visualEffectView: NSVisualEffectView!
+
+    init() {
+        let panelHeight: CGFloat = 76
+        let panelWidth: CGFloat = 340
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 340, height: 64),
+            contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        self.manager = manager
+
         self.level = .floating
         self.backgroundColor = .clear
         self.isOpaque = false
-        self.hasShadow = true
+        self.hasShadow = false
         self.isReleasedWhenClosed = false
-        self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+        self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .stationary]
 
+        // NSVisualEffectView as the actual panel background
+        let effectView = NSVisualEffectView()
+        effectView.material = .hudWindow
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = 14
+        effectView.layer?.masksToBounds = true
+        effectView.layer?.borderWidth = 1
+        effectView.layer?.borderColor = NSColor(white: 1.0, alpha: 0.12).cgColor
+        effectView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        effectView.autoresizingMask = [.width, .height]
+        self.visualEffectView = effectView
+
+        // Shadow on the visual effect view layer (not the panel)
+        effectView.layer?.shadowColor = NSColor.black.cgColor
+        effectView.layer?.shadowOpacity = 0.45
+        effectView.layer?.shadowRadius = 20
+        effectView.layer?.shadowOffset = NSSize(width: 0, height: 8)
+
+        // Hosting view for SwiftUI content
         let hosting = NSHostingView(rootView: ToastPanelContent())
-        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 64)
+        hosting.frame = effectView.bounds
         hosting.autoresizingMask = [.width, .height]
-        self.contentView = hosting
+        effectView.addSubview(hosting)
+
+        self.contentView = effectView
     }
 
     func positionAtBottomCenter() {
         guard let screen = NSScreen.main else { return }
         let screenRect = screen.visibleFrame
-        let panelWidth: CGFloat = 340
-        let panelHeight: CGFloat = 64
-        let x = screenRect.midX - panelWidth / 2
-        let y = screenRect.minY + 40 // 40pt from bottom
-        self.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true)
+        let size = self.frame.size
+        let x = screenRect.midX - size.width / 2
+        let y = screenRect.minY + 48
+        self.setFrame(NSRect(x: x, y: y, width: size.width, height: size.height), display: true)
     }
 }
+
+// MARK: - Toast Content
 
 struct ToastPanelContent: View {
     @StateObject private var manager = ToastManager.shared
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .center) {
             if manager.isVisible, let toast = manager.currentToast {
                 toastCard(toast)
                     .transition(.asymmetric(
-                        insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)),
-                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9))
+                        insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.92)),
+                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.92))
                     ))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: manager.isVisible)
-        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: manager.currentToast?.id)
+        .animation(.spring(response: 0.38, dampingFraction: 0.72), value: manager.isVisible)
+        .animation(.spring(response: 0.38, dampingFraction: 0.72), value: manager.currentToast?.id)
     }
 
     private func toastCard(_ toast: Toast) -> some View {
@@ -129,7 +156,7 @@ struct ToastPanelContent: View {
             Image(systemName: toast.icon)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(toast.color)
-                .frame(width: 32, height: 32)
+                .frame(width: 34, height: 34)
                 .background(
                     Circle()
                         .fill(toast.color.opacity(0.12))
@@ -151,27 +178,7 @@ struct ToastPanelContent: View {
             Spacer(minLength: 8)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            VisualEffectMaterialView()
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    Color.white.opacity(0.2),
-                                    Color.white.opacity(0.05)
-                                ]),
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                )
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.35), radius: 20, x: 0, y: 8)
-        .frame(minWidth: 200, maxWidth: 320)
-        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
