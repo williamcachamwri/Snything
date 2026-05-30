@@ -61,8 +61,7 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <true/>
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/williamcachamwri/Snything/main/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>YOUR_ED_PUBLIC_KEY_HERE</string>
+    <!-- SUPublicEDKey removed for dev builds -->
 </dict>
 </plist>
 EOF
@@ -75,20 +74,27 @@ if [ -f "Snything.entitlements" ]; then
     cp "Snything.entitlements" "${APP_BUNDLE}/Contents/Resources/"
 fi
 
-# Copy Sparkle framework and helper tools into the bundle
-echo "Copying Sparkle framework..."
-SPARKLE_BUILD="${BUILD_DIR}/release/Sparkle"
-if [ -d "${SPARKLE_BUILD}.framework" ]; then
+# Copy Sparkle framework from SPM artifacts
+echo "Locating Sparkle framework..."
+SPARKLE_FRAMEWORK=""
+for dir in "${BUILD_DIR}/artifacts/Sparkle" "${BUILD_DIR}/checkouts/Sparkle" "${BUILD_DIR}/release"; do
+    if [ -d "${dir}/Sparkle.framework" ]; then
+        SPARKLE_FRAMEWORK="${dir}/Sparkle.framework"
+        break
+    fi
+done
+
+if [ -n "${SPARKLE_FRAMEWORK}" ]; then
+    echo "Copying Sparkle framework from ${SPARKLE_FRAMEWORK}"
     mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
-    cp -R "${SPARKLE_BUILD}.framework" "${APP_BUNDLE}/Contents/Frameworks/"
+    cp -R "${SPARKLE_FRAMEWORK}" "${APP_BUNDLE}/Contents/Frameworks/"
+else
+    echo "Warning: Sparkle.framework not found. Updates will be disabled."
+    echo "Searched: ${BUILD_DIR}/artifacts/Sparkle, ${BUILD_DIR}/checkouts/Sparkle, ${BUILD_DIR}/release"
 fi
 
-# Find Sparkle artifacts from SPM
-cd "${PROJECT_ROOT}"
-SPARKLE_CHECK=$(swift package show-dependencies 2>/dev/null | grep "Sparkle" || true)
-if [ -n "${SPARKLE_CHECK}" ]; then
-    echo "Sparkle dependency found in SPM"
-fi
+echo "Fixing rpath for Sparkle..."
+install_name_tool -add_rpath "@executable_path/../Frameworks" "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
 
 echo "Signing app bundle..."
 codesign --force --deep --sign - \
@@ -96,3 +102,6 @@ codesign --force --deep --sign - \
     "${APP_BUNDLE}"
 
 echo "Done: ${APP_BUNDLE}"
+echo ""
+echo "To install:"
+echo "  cp -R '${APP_BUNDLE}' /Applications/"
