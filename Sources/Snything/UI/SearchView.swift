@@ -53,8 +53,6 @@ struct SearchView: View {
                     ))
                     .animation(.spring(response: 0.25, dampingFraction: 0.8), value: coordinator.showActionPalette)
             }
-
-            ToastView()
         }
         .onAppear {
             isSearchFocused = true

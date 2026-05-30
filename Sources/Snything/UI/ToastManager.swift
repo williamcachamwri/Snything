@@ -1,5 +1,5 @@
 import SwiftUI
-import Combine
+import AppKit
 
 struct Toast: Identifiable, Equatable {
     let id = UUID()
@@ -22,6 +22,7 @@ final class ToastManager: ObservableObject {
 
     private var queue: [Toast] = []
     private var dismissTask: Task<Void, Never>? = nil
+    private var toastPanel: ToastPanel?
 
     private init() {}
 
@@ -35,47 +36,92 @@ final class ToastManager: ObservableObject {
 
     func dismiss() {
         dismissTask?.cancel()
-        withAnimation(.easeOut(duration: 0.2)) {
-            isVisible = false
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        isVisible = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             self?.currentToast = nil
             self?.presentNext()
         }
     }
 
     private func presentNext() {
-        guard !queue.isEmpty else { return }
+        guard !queue.isEmpty else {
+            // Hide panel when queue is empty
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+                self?.toastPanel?.orderOut(nil)
+            }
+            return
+        }
         let toast = queue.removeFirst()
         currentToast = toast
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-            isVisible = true
-        }
+        ensurePanel()
+        isVisible = true
+        toastPanel?.makeKeyAndOrderFront(nil)
+
         dismissTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
             guard !Task.isCancelled else { return }
             dismiss()
         }
     }
+
+    private func ensurePanel() {
+        if toastPanel == nil {
+            toastPanel = ToastPanel(manager: self)
+        }
+        toastPanel?.positionAtBottomCenter()
+    }
 }
 
-struct ToastView: View {
+final class ToastPanel: NSPanel {
+    private weak var manager: ToastManager?
+
+    init(manager: ToastManager) {
+        super.init(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 64),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        self.manager = manager
+        self.level = .floating
+        self.backgroundColor = .clear
+        self.isOpaque = false
+        self.hasShadow = true
+        self.isReleasedWhenClosed = false
+        self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle]
+
+        let hosting = NSHostingView(rootView: ToastPanelContent())
+        hosting.frame = NSRect(x: 0, y: 0, width: 340, height: 64)
+        hosting.autoresizingMask = [.width, .height]
+        self.contentView = hosting
+    }
+
+    func positionAtBottomCenter() {
+        guard let screen = NSScreen.main else { return }
+        let screenRect = screen.visibleFrame
+        let panelWidth: CGFloat = 340
+        let panelHeight: CGFloat = 64
+        let x = screenRect.midX - panelWidth / 2
+        let y = screenRect.minY + 40 // 40pt from bottom
+        self.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true)
+    }
+}
+
+struct ToastPanelContent: View {
     @StateObject private var manager = ToastManager.shared
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack {
-                if manager.isVisible, let toast = manager.currentToast {
-                    toastCard(toast)
-                        .position(x: geo.size.width / 2, y: geo.size.height - 60)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)),
-                            removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9))
-                        ))
-                }
+        ZStack {
+            if manager.isVisible, let toast = manager.currentToast {
+                toastCard(toast)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)),
+                        removal: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9))
+                    ))
             }
         }
-        .allowsHitTesting(false)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: manager.isVisible)
+        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: manager.currentToast?.id)
     }
 
     private func toastCard(_ toast: Toast) -> some View {
@@ -126,6 +172,6 @@ struct ToastView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.35), radius: 20, x: 0, y: 8)
         .frame(minWidth: 200, maxWidth: 320)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 10)
     }
 }

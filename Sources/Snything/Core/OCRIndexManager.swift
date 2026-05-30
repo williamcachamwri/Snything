@@ -48,16 +48,55 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         indexTask?.cancel()
         indexTask = Task { [weak self] in
             guard let self else { return }
-            await self.buildIndex(for: paths)
+            let imagePaths = self.collectImagePaths(from: paths)
+            await self.buildIndex(for: imagePaths)
         }
     }
 
-    private func buildIndex(for paths: [String]) async {
+    private func collectImagePaths(from paths: [String]) -> [String] {
+        let imageExts = Set(["png", "jpg", "jpeg", "gif", "tiff", "webp", "heic", "bmp"])
+        let fm = FileManager.default
+        var result: [String] = []
+        result.reserveCapacity(1000)
+
+        for path in paths {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: path, isDirectory: &isDir) else { continue }
+
+            if isDir.boolValue {
+                // Enumerate directory up to depth 4, skip heavy dirs
+                let url = URL(fileURLWithPath: path)
+                if let enumerator = fm.enumerator(
+                    at: url,
+                    includingPropertiesForKeys: [.isRegularFileKey],
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) {
+                    var count = 0
+                    for case let fileURL as URL in enumerator {
+                        let ext = fileURL.pathExtension.lowercased()
+                        if imageExts.contains(ext) {
+                            result.append(fileURL.path)
+                            count += 1
+                            if count >= 500 { break } // Limit per scope
+                        }
+                        // Limit depth by checking path components
+                        let depth = fileURL.pathComponents.count - url.pathComponents.count
+                        if depth > 4 { enumerator.skipDescendants() }
+                    }
+                }
+            } else {
+                let ext = URL(fileURLWithPath: path).pathExtension.lowercased()
+                if imageExts.contains(ext) {
+                    result.append(path)
+                }
+            }
+        }
+        return result
+    }
+
+    private func buildIndex(for imagePaths: [String]) async {
         await MainActor.run { isIndexing = true }
         await MainActor.run { indexedCount = 0 }
-
-        let imageExts = Set(["png", "jpg", "jpeg", "gif", "tiff", "webp", "heic", "bmp"])
-        let imagePaths = paths.filter { imageExts.contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }
         await MainActor.run { totalImages = imagePaths.count }
 
         for path in imagePaths {

@@ -91,9 +91,7 @@ enum CalculatorService {
         ("^(\\d+(?:\\.\\d+)?)\\s*(?:lb|lbs|pounds?)\\s+(?:to|in)\\s+(?:kg|kilograms?)$", 1.0, 0.453592, "kg"),
         ("^(\\d+(?:\\.\\d+)?)\\s*(?:g|grams?)\\s+(?:to|in)\\s+(?:oz|ounces?)$", 1.0, 0.035274, "oz"),
         ("^(\\d+(?:\\.\\d+)?)\\s*(?:oz|ounces?)\\s+(?:to|in)\\s+(?:g|grams?)$", 1.0, 28.3495, "g"),
-        // Temperature (special handling)
-        ("^(\\d+(?:\\.\\d+)?)\\s*(?:c|celsius|°c)\\s+(?:to|in)\\s+(?:f|fahrenheit|°f)$", 1.0, 1.0, "°F"),
-        ("^(\\d+(?:\\.\\d+)?)\\s*(?:f|fahrenheit|°f)\\s+(?:to|in)\\s+(?:c|celsius|°c)$", 1.0, 1.0, "°C"),
+
         // Volume
         ("^(\\d+(?:\\.\\d+)?)\\s*(?:l|liters?|litres?)\\s+(?:to|in)\\s+(?:gal|gallons?)$", 1.0, 0.264172, "gal"),
         ("^(\\d+(?:\\.\\d+)?)\\s*(?:gal|gallons?)\\s+(?:to|in)\\s+(?:l|liters?|litres?)$", 1.0, 3.78541, "L"),
@@ -113,14 +111,7 @@ enum CalculatorService {
                   let value = Double(String(lower[numStr]))
             else { continue }
 
-            let result: Double
-            if conv.label == "°F" {
-                result = value * 9/5 + 32
-            } else if conv.label == "°C" {
-                result = (value - 32) * 5/9
-            } else {
-                result = value * conv.to / conv.from
-            }
+            let result = value * conv.to / conv.from
 
             let formatted: String
             if result == floor(result) && result < 1e12 {
@@ -134,27 +125,6 @@ enum CalculatorService {
     }
 
     // MARK: - Currency Conversion
-
-    // Approximate rates (USD base) - updated periodically would be ideal
-    private static let currencyRates: [String: Double] = [
-        "usd": 1.0,
-        "eur": 0.92,
-        "gbp": 0.79,
-        "jpy": 150.5,
-        "vnd": 24500.0,
-        "krw": 1330.0,
-        "cny": 7.19,
-        "cad": 1.35,
-        "aud": 1.52,
-        "chf": 0.88,
-        "sgd": 1.34,
-        "hkd": 7.82,
-        "inr": 83.0,
-        "thb": 35.5,
-        "php": 56.2,
-        "myr": 4.72,
-        "idr": 15600.0,
-    ]
 
     private static func parseCurrencyConversion(_ text: String) -> CalculatorResult? {
         let lower = text.lowercased()
@@ -170,11 +140,11 @@ enum CalculatorService {
         let fromCode = String(lower[fromRange])
         let toCode = String(lower[toRange])
 
-        guard let fromRate = currencyRates[fromCode], let toRate = currencyRates[toCode] else {
+        guard let rate = CurrencyRateService.shared.rate(from: fromCode, to: toCode) else {
             return nil
         }
 
-        let result = amount * toRate / fromRate
+        let result = amount * rate
         let formatted: String
         if result >= 100 {
             formatted = String(format: "%.2f %@", result, toCode.uppercased())
