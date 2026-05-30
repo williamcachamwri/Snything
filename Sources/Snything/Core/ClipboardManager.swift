@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftUI
 
 final class ClipboardManager {
     static let shared = ClipboardManager()
@@ -77,6 +78,8 @@ final class ClipboardManager {
                 id: UUID().uuidString,
                 content: first.path,
                 type: .file,
+                smartType: .filePath,
+                smartInfo: nil,
                 sourceAppName: appName,
                 sourceBundleID: bundleID,
                 timestamp: Date(),
@@ -85,22 +88,33 @@ final class ClipboardManager {
         }
 
         if let string = pasteboard.string(forType: .string), !string.isEmpty {
+            let baseType: ClipboardContentType
             if let url = URL(string: string.trimmingCharacters(in: .whitespaces)),
                url.scheme != nil, url.host != nil {
-                return ClipboardItem(
-                    id: UUID().uuidString,
-                    content: string,
-                    type: .url,
-                    sourceAppName: appName,
-                    sourceBundleID: bundleID,
-                    timestamp: Date(),
-                    characterCount: string.count
-                )
+                baseType = .url
+            } else {
+                baseType = .text
             }
+            let smart = SmartClipboardService.analyze(content: string, baseType: baseType)
+
+            // Show toast for smart detection
+            DispatchQueue.main.async {
+                if smart.type != .plainText {
+                    ToastManager.shared.show(
+                        icon: self.toastIcon(for: smart.type),
+                        title: "Copied \(smart.type == .code ? (smart.detectedLanguage?.capitalized ?? "Code") : smart.type.rawValue)",
+                        subtitle: string.prefix(40) + (string.count > 40 ? "..." : ""),
+                        color: self.toastColor(for: smart.type)
+                    )
+                }
+            }
+
             return ClipboardItem(
                 id: UUID().uuidString,
                 content: string,
-                type: .text,
+                type: baseType,
+                smartType: smart.type,
+                smartInfo: smart,
                 sourceAppName: appName,
                 sourceBundleID: bundleID,
                 timestamp: Date(),
@@ -112,10 +126,13 @@ final class ClipboardManager {
             let attr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil)
             let plain = attr?.string ?? ""
             if !plain.isEmpty {
+                let smart = SmartClipboardService.analyze(content: plain, baseType: .rtf)
                 return ClipboardItem(
                     id: UUID().uuidString,
                     content: plain,
                     type: .rtf,
+                    smartType: smart.type,
+                    smartInfo: smart,
                     sourceAppName: appName,
                     sourceBundleID: bundleID,
                     timestamp: Date(),
@@ -137,6 +154,8 @@ final class ClipboardManager {
                     id: UUID().uuidString,
                     content: imagePath ?? "Image",
                     type: .image,
+                    smartType: .plainText,
+                    smartInfo: nil,
                     sourceAppName: appName,
                     sourceBundleID: bundleID,
                     timestamp: Date(),
@@ -146,6 +165,38 @@ final class ClipboardManager {
         }
 
         return nil
+    }
+
+    private func toastIcon(for type: SmartClipboardType) -> String {
+        switch type {
+        case .url: return "link"
+        case .email: return "envelope.fill"
+        case .phone: return "phone.fill"
+        case .hexColor, .rgbColor: return "paintpalette.fill"
+        case .json: return "curlybraces"
+        case .code: return "chevron.left.forwardslash.chevron.right"
+        case .filePath: return "doc.fill"
+        case .number: return "number"
+        case .command: return "terminal.fill"
+        case .markdown: return "doc.richtext"
+        case .plainText: return "doc.text"
+        }
+    }
+
+    private func toastColor(for type: SmartClipboardType) -> Color {
+        switch type {
+        case .url: return .blue
+        case .email: return .cyan
+        case .phone: return .green
+        case .hexColor, .rgbColor: return .pink
+        case .json: return .orange
+        case .code: return .purple
+        case .filePath: return .orange
+        case .number: return .teal
+        case .command: return .gray
+        case .markdown: return .indigo
+        case .plainText: return .secondary
+        }
     }
 
     private func persistImageData(_ data: Data, ext: String) -> String? {

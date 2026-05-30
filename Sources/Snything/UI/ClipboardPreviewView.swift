@@ -12,16 +12,15 @@ struct ClipboardPreviewView: View {
     @State private var rippleScale: CGFloat = 0
     @State private var rippleOpacity: Double = 0
     @State private var flashOpacity: Double = 0
+    @State private var showFormattedJSON = true
 
     var body: some View {
         ZStack {
-            // Main preview content
             previewBody
                 .opacity(isClearing ? 0 : 1)
                 .scaleEffect(isClearing ? 0.88 : 1)
                 .blur(radius: isClearing ? 6 : 0)
 
-            // White flash overlay on clear
             Color.white
                 .opacity(flashOpacity)
                 .ignoresSafeArea()
@@ -38,11 +37,9 @@ struct ClipboardPreviewView: View {
     @ViewBuilder
     private var previewBody: some View {
         VStack(spacing: 0) {
-            // Main content area with app icon badge overlay
             contentAreaWithBadge
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Bottom info bar
             if !item.sourceBundleID.isEmpty {
                 bottomBar
             }
@@ -103,14 +100,12 @@ struct ClipboardPreviewView: View {
 
     private var clearButtonArea: some View {
         ZStack {
-            // Ripple burst ring on click
             Circle()
                 .fill(Color.red.opacity(0.25))
                 .frame(width: 80, height: 80)
                 .scaleEffect(rippleScale)
                 .opacity(rippleOpacity)
 
-            // The actual button
             Button {
                 performClear()
             } label: {
@@ -171,20 +166,15 @@ struct ClipboardPreviewView: View {
     }
 
     private func performClear() {
-        // Phase 1: button press + ripple
         withAnimation(.spring(response: 0.12, dampingFraction: 0.6)) {
             isPressingClear = true
         }
-
-        // Phase 2: ripple ring burst
         rippleScale = 0.3
         rippleOpacity = 1.0
         withAnimation(.easeOut(duration: 0.35)) {
             rippleScale = 1.8
             rippleOpacity = 0.0
         }
-
-        // Phase 3: white flash
         withAnimation(.easeIn(duration: 0.06)) {
             flashOpacity = 0.45
         }
@@ -193,15 +183,11 @@ struct ClipboardPreviewView: View {
                 flashOpacity = 0.0
             }
         }
-
-        // Phase 4: content implodes
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                 isClearing = true
             }
         }
-
-        // Phase 5: execute clear after animation
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
             onClearAll()
             withAnimation(.none) {
@@ -217,11 +203,395 @@ struct ClipboardPreviewView: View {
         case .image:
             imagePreview
         case .text, .rtf:
-            textPreview
+            smartTextPreview
         case .url:
             urlPreview
         case .file:
             filePreview
+        }
+    }
+
+    @ViewBuilder
+    private var smartTextPreview: some View {
+        switch item.smartType {
+        case .hexColor, .rgbColor:
+            colorPreview
+        case .json:
+            jsonPreview
+        case .code:
+            codePreview
+        case .number:
+            numberPreview
+        case .email:
+            emailPreview
+        case .phone:
+            phonePreview
+        case .command:
+            commandPreview
+        case .url:
+            urlPreview
+        default:
+            plainTextPreview
+        }
+    }
+
+    private var colorPreview: some View {
+        guard let rgb = item.smartInfo?.rgbValues else { return AnyView(plainTextPreview) }
+        let color = Color(red: Double(rgb.r)/255.0, green: Double(rgb.g)/255.0, blue: Double(rgb.b)/255.0)
+        return AnyView(
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 80, height: 80)
+                        .shadow(color: color.opacity(0.4), radius: 16, x: 0, y: 4)
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 2)
+                        .frame(width: 80, height: 80)
+                }
+
+                VStack(spacing: 4) {
+                    Text(item.content)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary)
+
+                    Text("RGB(\(rgb.r), \(rgb.g), \(rgb.b))")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    if let swiftUI = item.smartInfo?.swiftUIColor {
+                        copyButton(label: "SwiftUI", value: swiftUI)
+                    }
+                    if let css = item.smartInfo?.cssColor {
+                        copyButton(label: "CSS", value: css)
+                    }
+                    copyButton(label: "Hex", value: item.content)
+                }
+                .padding(.top, 4)
+
+                Spacer()
+            }
+            .padding(.top, 40)
+        )
+    }
+
+    private var jsonPreview: some View {
+        VStack(spacing: 0) {
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "curlybraces")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.orange)
+                    Text("JSON")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.orange)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.orange.opacity(0.12))
+                )
+
+                Spacer()
+
+                Button {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        showFormattedJSON.toggle()
+                    }
+                } label: {
+                    Text(showFormattedJSON ? "Minify" : "Format")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.accentColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(Color.accentColor.opacity(0.10))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(showFormattedJSON ? (item.smartInfo?.formattedJSON ?? item.content) : (item.smartInfo?.minifiedJSON ?? item.content))
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundColor(.primary.opacity(0.9))
+                    .lineSpacing(2)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.black.opacity(0.15))
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var codePreview: some View {
+        VStack(spacing: 0) {
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.purple)
+                    Text(item.smartInfo?.detectedLanguage?.uppercased() ?? "CODE")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.purple)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.purple.opacity(0.12))
+                )
+
+                Spacer()
+
+                Button {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(item.content, forType: .string)
+                    ToastManager.shared.show(icon: "doc.on.doc", title: "Copied code", color: .purple)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("Copy")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(.purple)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.purple.opacity(0.10))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(item.content)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundColor(.primary.opacity(0.9))
+                    .lineSpacing(3)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.black.opacity(0.15))
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var numberPreview: some View {
+        VStack(spacing: 20) {
+            if let result = item.smartInfo?.expressionResult {
+                ZStack {
+                    Circle()
+                        .fill(Color.teal.opacity(0.12))
+                        .frame(width: 80, height: 80)
+                    VStack(spacing: 0) {
+                        Text(String(format: "%g", result))
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(.teal)
+                    }
+                }
+
+                Text(item.content)
+                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary)
+            } else {
+                ZStack {
+                    Circle()
+                        .fill(Color.teal.opacity(0.12))
+                        .frame(width: 80, height: 80)
+                    Text(item.content)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(.teal)
+                }
+            }
+
+            HStack(spacing: 8) {
+                copyButton(label: "Copy", value: item.content)
+            }
+
+            Spacer()
+        }
+        .padding(.top, 40)
+    }
+
+    private var emailPreview: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.cyan.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "envelope.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.cyan)
+            }
+
+            VStack(spacing: 4) {
+                Text(item.content)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 20)
+
+            HStack(spacing: 8) {
+                Button {
+                    if let url = URL(string: "mailto:\(item.content)") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("Compose", systemImage: "envelope")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.cyan)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                copyButton(label: "Copy", value: item.content)
+            }
+            .padding(.top, 8)
+
+            Spacer()
+        }
+        .padding(.top, 40)
+    }
+
+    private var phonePreview: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "phone.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.green)
+            }
+
+            Text(item.content)
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+
+            HStack(spacing: 8) {
+                Button {
+                    if let url = URL(string: "tel:\(item.content.filter { $0.isNumber })") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("Call", systemImage: "phone")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.green)
+                        )
+                }
+                .buttonStyle(.plain)
+
+                copyButton(label: "Copy", value: item.content)
+            }
+            .padding(.top, 8)
+
+            Spacer()
+        }
+        .padding(.top, 40)
+    }
+
+    private var commandPreview: some View {
+        VStack(spacing: 0) {
+            HStack {
+                HStack(spacing: 4) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.gray)
+                    Text("SHELL COMMAND")
+                        .font(.system(size: 10, weight: .bold, design: .rounded))
+                        .foregroundColor(.gray)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.gray.opacity(0.12))
+                )
+
+                Spacer()
+
+                Button {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(item.content, forType: .string)
+                    ToastManager.shared.show(icon: "doc.on.doc", title: "Copied command", color: .gray)
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 9, weight: .semibold))
+                        Text("Copy")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(.gray)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.gray.opacity(0.10))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                Text(item.content)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundColor(.primary.opacity(0.9))
+                    .lineSpacing(3)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.black.opacity(0.15))
+            )
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private var plainTextPreview: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            Text(item.content)
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundColor(.primary.opacity(0.9))
+                .lineSpacing(4)
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
         }
     }
 
@@ -242,17 +612,6 @@ struct ClipboardPreviewView: View {
             } else {
                 placeholderView(icon: "photo", text: "Image Preview")
             }
-        }
-    }
-
-    private var textPreview: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            Text(item.content)
-                .font(.system(size: 13, weight: .regular, design: .rounded))
-                .foregroundColor(.primary.opacity(0.9))
-                .lineSpacing(4)
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -280,22 +639,26 @@ struct ClipboardPreviewView: View {
                     .padding(.horizontal, 20)
             }
 
-            Button {
-                if let url = URL(string: item.content) {
-                    NSWorkspace.shared.open(url)
+            HStack(spacing: 8) {
+                Button {
+                    if let url = URL(string: item.content) {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("Open", systemImage: "safari")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.blue)
+                        )
                 }
-            } label: {
-                Label("Open in Browser", systemImage: "safari")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.blue)
-                    )
+                .buttonStyle(.plain)
+
+                copyButton(label: "Copy", value: item.content)
             }
-            .buttonStyle(.plain)
             .padding(.top, 8)
 
             Spacer()
@@ -364,6 +727,30 @@ struct ClipboardPreviewView: View {
             Spacer()
         }
         .padding(.top, 40)
+    }
+
+    private func copyButton(label: String, value: String) -> some View {
+        Button {
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(value, forType: .string)
+            ToastManager.shared.show(icon: "doc.on.doc", title: "Copied \(label)", color: .accentColor)
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary.opacity(0.85))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.accentColor.opacity(0.10))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     private func placeholderView(icon: String, text: String) -> some View {

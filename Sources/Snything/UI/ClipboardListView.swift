@@ -99,17 +99,21 @@ struct ClipboardRowView: View {
 
             Spacer()
 
-            // Type badge
+            // Smart type badge
             if !isDeleting {
-                Text(item.type.rawValue.uppercased())
-                    .font(.system(size: 9, weight: .bold, design: .rounded))
-                    .foregroundColor(typeBadgeColor.opacity(0.9))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(typeBadgeColor.opacity(0.12))
-                    )
+                HStack(spacing: 3) {
+                    Image(systemName: item.smartIcon)
+                        .font(.system(size: 8, weight: .bold))
+                    Text(item.smartDisplayLabel)
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(item.smartColor.opacity(0.9))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(item.smartColor.opacity(0.12))
+                )
             }
 
             if isSelected && !isDeleting {
@@ -205,33 +209,10 @@ struct ClipboardRowView: View {
     }
 
     private var iconName: String {
-        switch item.type {
-        case .text: return "doc.text"
-        case .url: return "link"
-        case .file: return "doc"
-        case .image: return "photo"
-        case .rtf: return "textformat"
-        }
+        item.smartIcon
     }
 
     private var iconColor: Color {
-        switch item.type {
-        case .text: return .secondary
-        case .url: return .blue
-        case .file: return .orange
-        case .image: return .pink
-        case .rtf: return .cyan
-        }
+        item.smartColor
     }
-
-    private var typeBadgeColor: Color {
-        switch item.type {
-        case .text: return .secondary
-        case .url: return .blue
-        case .file: return .orange
-        case .image: return .pink
-        case .rtf: return .cyan
-        }
-    }
-
 }
