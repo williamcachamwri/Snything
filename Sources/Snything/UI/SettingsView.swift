@@ -259,8 +259,6 @@ struct AboutSettingsView: View {
 struct HotkeySettingsView: View {
     @StateObject private var settings = SettingsManager.shared
     @State private var listeningFor: String? = nil
-    @State private var capturedKeys: [Int] = []
-    @State private var confirmTimer: Timer?
 
     private let keyNames: [Int: String] = [
         0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
@@ -286,7 +284,7 @@ struct HotkeySettingsView: View {
                     display: hotkeyDisplay,
                     isListening: listeningFor == "global",
                     onTapCapture: { listeningFor = "global" },
-                    onTapCancel: { cancelCapture() }
+                    onTapCancel: { listeningFor = nil }
                 )
 
                 Text("Modifiers")
@@ -324,122 +322,8 @@ struct HotkeySettingsView: View {
                     }
                 }
 
-                Divider()
-                    .background(Color.white.opacity(0.06))
-                    .padding(.vertical, 4)
-
-                Text("Tab Chord Shortcuts")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                KeyCaptureRow(
-                    icon: "square.grid.2x2",
-                    title: "Applications",
-                    subtitle: "Chord after global hotkey",
-                    sequence: settings.tabShortcutApplications,
-                    isListening: listeningFor == "apps",
-                    onTapCapture: { startCapture(for: "apps") },
-                    onTapCancel: { cancelCapture() }
-                )
-                KeyCaptureRow(
-                    icon: "doc.on.clipboard",
-                    title: "Clipboard",
-                    subtitle: "Chord after global hotkey",
-                    sequence: settings.tabShortcutClipboard,
-                    isListening: listeningFor == "clipboard",
-                    onTapCapture: { startCapture(for: "clipboard") },
-                    onTapCancel: { cancelCapture() }
-                )
-
-                if listeningFor == "apps" || listeningFor == "clipboard" {
-                    Text("Press up to 3 keys. Enter to confirm. Esc to cancel.")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(.secondary.opacity(0.6))
-                }
             }
         }
-        .onChange(of: listeningFor) { _, new in
-            NotificationCenter.default.post(
-                name: .snythingSettingsCaptureStateChanged,
-                object: nil,
-                userInfo: ["isActive": new != nil]
-            )
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .snythingSettingsKeyCaptured)) { notification in
-            guard let code = notification.userInfo?["keyCode"] as? Int else { return }
-            if code == 53 { // Esc
-                cancelCapture()
-                return
-            }
-            if code == 36 { // Return / Enter
-                confirmCapture()
-                return
-            }
-            if listeningFor == "global" {
-                let rawMods = notification.userInfo?["modifiers"] as? UInt ?? 0
-                let mods = NSEvent.ModifierFlags(rawValue: rawMods)
-                settings.hotkeyCmd = mods.contains(.command)
-                settings.hotkeyShift = mods.contains(.shift)
-                settings.hotkeyOption = mods.contains(.option)
-                settings.hotkeyCtrl = mods.contains(.control)
-                settings.hotkeyKeyCode = code
-                NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
-                listeningFor = nil
-                return
-            }
-            // Tab chord capture
-            if capturedKeys.count >= 3 {
-                return
-            }
-            capturedKeys.append(code)
-            resetConfirmTimer()
-        }
-    }
-
-    private func startCapture(for target: String) {
-        listeningFor = target
-        capturedKeys = []
-        resetConfirmTimer()
-    }
-
-    private func cancelCapture() {
-        listeningFor = nil
-        capturedKeys = []
-        confirmTimer?.invalidate()
-        confirmTimer = nil
-    }
-
-    private func confirmCapture() {
-        guard let target = listeningFor else { return }
-        switch target {
-        case "apps":
-            if !capturedKeys.isEmpty {
-                settings.tabShortcutApplications = capturedKeys
-            }
-        case "clipboard":
-            if !capturedKeys.isEmpty {
-                settings.tabShortcutClipboard = capturedKeys
-            }
-        default:
-            break
-        }
-        listeningFor = nil
-        capturedKeys = []
-        confirmTimer?.invalidate()
-        confirmTimer = nil
-    }
-
-    private func resetConfirmTimer() {
-        confirmTimer?.invalidate()
-        confirmTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
-            confirmCapture()
-        }
-    }
-
-    private func formatSequence(_ seq: [Int]) -> String {
-        if seq.isEmpty { return "..." }
-        let labels = seq.map { keyNames[$0] ?? "Key \($0)" }
-        return labels.joined(separator: " + ")
     }
 
     private func keyName(for code: Int) -> String {
@@ -541,121 +425,6 @@ struct KeyCaptureBadge: View {
                 pulse = false
             }
         }
-    }
-}
-
-struct KeyCaptureRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let sequence: [Int]
-    let isListening: Bool
-    let onTapCapture: () -> Void
-    let onTapCancel: () -> Void
-
-    @State private var pulse = false
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.secondary.opacity(0.7))
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-
-            Spacer()
-
-            HStack(spacing: 8) {
-                HStack(spacing: 4) {
-                    if isListening {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 5, height: 5)
-                            .opacity(pulse ? 0.3 : 1.0)
-                        Text("Listening...")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.accentColor)
-                    } else {
-                        Text(sequenceDisplay)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundColor(.primary)
-                    }
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isListening ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.06))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(isListening ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.06), lineWidth: 1)
-                        )
-                )
-
-                Button {
-                    if isListening {
-                        onTapCancel()
-                    } else {
-                        onTapCapture()
-                    }
-                } label: {
-                    Text(isListening ? "Cancel" : "Change")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(isListening ? .secondary : .primary.opacity(0.85))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                .fill(isListening ? Color.secondary.opacity(0.06) : Color.accentColor.opacity(0.10))
-                        )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 2)
-        .onAppear {
-            if isListening {
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            }
-        }
-        .onChange(of: isListening) { _, new in
-            if new {
-                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                    pulse = true
-                }
-            } else {
-                pulse = false
-            }
-        }
-    }
-
-    private var sequenceDisplay: String {
-        let keyNames: [Int: String] = [
-            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
-            11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T",
-            31: "O", 32: "U", 34: "I", 35: "P", 37: "L", 38: "J", 39: "K", 40: "N", 42: "M",
-            45: ".", 46: "/", 43: ",", 41: ";", 27: "'", 50: "`", 33: "[", 30: "]", 44: "\\",
-            49: "Space", 53: "Esc",
-            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
-            98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
-            36: "Return", 48: "Tab", 51: "Delete",
-            123: "Left", 124: "Right", 125: "Down", 126: "Up",
-            115: "Home", 119: "End", 116: "PgUp", 121: "PgDn"
-        ]
-        if sequence.isEmpty { return "..." }
-        let labels = sequence.map { keyNames[$0] ?? "Key \($0)" }
-        return labels.joined(separator: " + ")
     }
 }
 

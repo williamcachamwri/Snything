@@ -49,25 +49,13 @@ struct SearchView: View {
             setupKeyboardMonitor()
             coordinator.showRecents()
             startRecentsTimer()
-            // Enter chord mode whenever the search window is shown
-            NotificationCenter.default.addObserver(
-                forName: .snythingWindowShown,
-                object: nil,
-                queue: .main
-            ) { [weak coordinator] _ in
-                coordinator?.enterChordMode()
-            }
         }
         .onDisappear {
             coordinator.cancel()
-            coordinator.cancelChord()
             KeyboardManager.shared.stopMonitoring()
             KeyboardManager.shared.onKeyDown = nil
             stopRecentsTimer()
             stopClipboardTimer()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .snythingWindowHidden)) { _ in
-            coordinator.cancelChord()
         }
         .background(Color.clear)
     }
@@ -239,12 +227,6 @@ struct SearchView: View {
         KeyboardManager.shared.onKeyDown = { [weak coordinator] event in
             guard let coordinator = coordinator else { return false }
 
-            // Chord mode: append key to sequence
-            if coordinator.chordModeActive {
-                let consumed = coordinator.appendChordKey(Int(event.keyCode))
-                return consumed
-            }
-
             switch event.keyCode {
             case 123: // left arrow
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
@@ -294,10 +276,6 @@ struct SearchView: View {
                 }
                 return true
             case 53: // escape
-                if coordinator.chordModeActive {
-                    coordinator.cancelChord()
-                    return true
-                }
                 if coordinator.showPreview {
                     withAnimation(.easeOut(duration: 0.15)) {
                         coordinator.showPreview = false
@@ -310,34 +288,6 @@ struct SearchView: View {
                 NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
                 return true
             default:
-                let code = Int(event.keyCode)
-                let settings = SettingsManager.shared
-                if event.modifierFlags.contains(.command) {
-                    // Direct tab shortcuts when window is already visible
-                    let isBareModifier = code == 54 || code == 55 || code == 56 || code == 58 ||
-                                         code == 59 || code == 60 || code == 61 || code == 62
-                    if !isBareModifier {
-                        if let first = settings.tabShortcutApplications.first, code == first {
-                            if !coordinator.showingApplications {
-                                self.query = ""
-                                self.stopRecentsTimer()
-                                self.stopClipboardTimer()
-                                coordinator.showApplications()
-                                coordinator.performSearch(query: "")
-                            }
-                            return true
-                        }
-                        if let first = settings.tabShortcutClipboard.first, code == first {
-                            if !coordinator.showingClipboard {
-                                self.query = ""
-                                self.stopRecentsTimer()
-                                coordinator.showClipboardHistory()
-                                self.startClipboardTimer()
-                            }
-                            return true
-                        }
-                    }
-                }
                 if !self.isSearchFocused && event.characters?.count == 1 {
                     self.query += event.characters!
                     self.isSearchFocused = true

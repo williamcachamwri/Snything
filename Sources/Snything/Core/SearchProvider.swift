@@ -34,11 +34,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var deletingResultID: String? = nil
     @Published var deletingClipboardID: String? = nil
     @Published var shouldAutoScroll: Bool = false
-    @Published var chordModeActive: Bool = false
-    @Published var chordSequence: [Int] = []
 
     private let engine = FastSearchEngine.shared
-    private var chordTimer: Timer?
     private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
     private let fm = FileManager.default
@@ -330,72 +327,6 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
                 print("[SearchCoordinator] failed to trash \(result.path): \(error)")
             }
         }
-    }
-
-    // MARK: - Chord Shortcuts
-
-    func enterChordMode() {
-        chordModeActive = true
-        chordSequence = []
-        chordTimer?.invalidate()
-        chordTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            self?.cancelChord()
-        }
-    }
-
-    func cancelChord() {
-        chordModeActive = false
-        chordSequence = []
-        chordTimer?.invalidate()
-        chordTimer = nil
-    }
-
-    @discardableResult
-    func appendChordKey(_ keyCode: Int) -> Bool {
-        guard chordModeActive else { return false }
-        chordSequence.append(keyCode)
-        let settings = SettingsManager.shared
-        let appsSeq = settings.tabShortcutApplications
-        let clipSeq = settings.tabShortcutClipboard
-
-        // Check full match
-        if chordSequence == appsSeq {
-            chordModeActive = false
-            chordSequence = []
-            chordTimer?.invalidate()
-            chordTimer = nil
-            if !showingApplications {
-                showApplications()
-                performSearch(query: "")
-            }
-            return true
-        }
-        if chordSequence == clipSeq {
-            chordModeActive = false
-            chordSequence = []
-            chordTimer?.invalidate()
-            chordTimer = nil
-            if !showingClipboard {
-                showClipboardHistory()
-            }
-            return true
-        }
-
-        // Check prefix match
-        let appsPrefix = appsSeq.prefix(chordSequence.count)
-        let clipPrefix = clipSeq.prefix(chordSequence.count)
-        if chordSequence != Array(appsPrefix) && chordSequence != Array(clipPrefix) {
-            // No prefix match → cancel and let the key pass through
-            cancelChord()
-            return false
-        }
-
-        // Prefix match → extend timer for multi-key sequences
-        chordTimer?.invalidate()
-        chordTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
-            self?.cancelChord()
-        }
-        return true
     }
 
     func togglePreview() {
