@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import ServiceManagement
+import Carbon
 
 final class SettingsManager: ObservableObject, @unchecked Sendable {
     static let shared = SettingsManager()
@@ -27,6 +28,54 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         didSet { objectWillChange.send() }
     }
 
+    // Window size
+    @AppStorage("snything.windowWidth") var windowWidth: Double = 800 {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.windowHeight") var windowHeight: Double = 520 {
+        didSet { objectWillChange.send() }
+    }
+
+    // UI tuning
+    @AppStorage("snything.animationSpeed") var animationSpeed: Double = 1.0 {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.showFileIcons") var showFileIcons: Bool = true {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.maxRecents") var maxRecents: Double = 20 {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.fontSizeScale") var fontSizeScale: Double = 1.0 {
+        didSet { objectWillChange.send() }
+    }
+
+    // Hotkey config
+    @AppStorage("snything.hotkeyKeyCode") var hotkeyKeyCode: Int = 49 {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyCmd") var hotkeyCmd: Bool = true {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyShift") var hotkeyShift: Bool = true {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyOption") var hotkeyOption: Bool = false {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyCtrl") var hotkeyCtrl: Bool = false {
+        didSet { objectWillChange.send() }
+    }
+
+    var hotkeyModifiersUInt32: UInt32 {
+        var mods: UInt32 = 0
+        if hotkeyCmd { mods |= UInt32(cmdKey) }
+        if hotkeyShift { mods |= UInt32(shiftKey) }
+        if hotkeyOption { mods |= UInt32(optionKey) }
+        if hotkeyCtrl { mods |= UInt32(controlKey) }
+        return mods
+    }
+
     // Scopes stored as comma-separated paths
     @AppStorage("snything.searchScopes") private var scopesString: String = "/Applications,/Users,/opt,/usr/local,Library"
 
@@ -36,7 +85,6 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
     }
 
     private init() {
-        // Sync launch at login on init
         syncLaunchAtLogin()
     }
 
@@ -55,6 +103,17 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         showHiddenFiles = false
         showPreviewOnSelect = false
         launchAtLogin = false
+        windowWidth = 800
+        windowHeight = 520
+        animationSpeed = 1.0
+        showFileIcons = true
+        maxRecents = 20
+        fontSizeScale = 1.0
+        hotkeyKeyCode = 49
+        hotkeyCmd = true
+        hotkeyShift = true
+        hotkeyOption = false
+        hotkeyCtrl = false
         scopesString = "/Applications,/Users,/opt,/usr/local,Library"
     }
 
@@ -64,5 +123,9 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
 
     var maxResultsInt: Int {
         Int(maxResults)
+    }
+
+    var maxRecentsInt: Int {
+        Int(maxRecents)
     }
 }

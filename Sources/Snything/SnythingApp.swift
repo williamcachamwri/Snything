@@ -35,6 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: .snythingHideWindow,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleToggleWindow),
+            name: .snythingToggleWindow,
+            object: nil
+        )
 
         let hasCompleted = UserDefaults.standard.bool(forKey: hasCompletedOnboardingKey)
         let hasShownSplash = UserDefaults.standard.bool(forKey: hasShownSplashKey)
@@ -88,6 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleHideSearch() {
         searchWindowController?.hideWindow()
+    }
+
+    @objc private func handleToggleWindow() {
+        searchWindowController?.toggleVisibility()
     }
 
     @objc private func showSearch() {
@@ -340,4 +350,5 @@ final class LaunchAtLoginManager: ObservableObject {
 
 extension Notification.Name {
     static let snythingHideWindow = Notification.Name("snythingHideWindow")
+    static let snythingToggleWindow = Notification.Name("snythingToggleWindow")
 }

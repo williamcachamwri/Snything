@@ -1,10 +1,13 @@
 import SwiftUI
+import Carbon
 
 struct SettingsView: View {
     @StateObject private var settings = SettingsManager.shared
     @State private var selectedTab = 0
     @State private var isAnimated = false
     @Environment(\.dismiss) private var dismiss
+
+    private let tabs = ["General", "Search", "Hotkeys", "About"]
 
     var body: some View {
         ZStack {
@@ -40,13 +43,13 @@ struct SettingsView: View {
                 .padding(.bottom, 16)
 
                 HStack(spacing: 0) {
-                    ForEach(0..<3) { idx in
+                    ForEach(0..<tabs.count, id: \.self) { idx in
                         Button {
                             withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
                                 selectedTab = idx
                             }
                         } label: {
-                            Text(["General", "Search", "About"][idx])
+                            Text(tabs[idx])
                                 .font(.system(size: 12, weight: selectedTab == idx ? .semibold : .medium, design: .rounded))
                                 .foregroundColor(selectedTab == idx ? .accentColor : .secondary)
                                 .padding(.horizontal, 14)
@@ -67,7 +70,8 @@ struct SettingsView: View {
                         switch selectedTab {
                         case 0: GeneralSettingsView()
                         case 1: SearchSettingsView()
-                        case 2: AboutSettingsView()
+                        case 2: HotkeySettingsView()
+                        case 3: AboutSettingsView()
                         default: EmptyView()
                         }
                     }
@@ -76,7 +80,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .frame(width: 440, height: 400)
+        .frame(width: 480, height: 480)
         .onAppear {
             withAnimation(.spring(response: 0.4, dampingFraction: 0.8).delay(0.05)) {
                 isAnimated = true
@@ -106,6 +110,13 @@ struct GeneralSettingsView: View {
             )
 
             ToggleRow(
+                icon: "photo",
+                title: "Show File Icons",
+                subtitle: "Display real file icons in results",
+                isOn: $settings.showFileIcons
+            )
+
+            ToggleRow(
                 icon: "power",
                 title: "Launch at Login",
                 subtitle: "Start automatically when logging in",
@@ -132,9 +143,36 @@ struct GeneralSettingsView: View {
                 icon: "list.number",
                 title: "Max Results",
                 value: $settings.maxResults,
-                range: 50...500,
+                range: 50...1000,
                 step: 50,
                 format: { "\(Int($0))" }
+            )
+
+            SliderRow(
+                icon: "clock.arrow.circlepath",
+                title: "Max Recents",
+                value: $settings.maxRecents,
+                range: 5...50,
+                step: 5,
+                format: { "\(Int($0))" }
+            )
+
+            SliderRow(
+                icon: "gauge.with.dots.needle.67percent",
+                title: "Animation Speed",
+                value: $settings.animationSpeed,
+                range: 0.5...2.0,
+                step: 0.25,
+                format: { String(format: "%.2fx", $0) }
+            )
+
+            SliderRow(
+                icon: "textformat.size",
+                title: "Font Scale",
+                value: $settings.fontSizeScale,
+                range: 0.8...1.4,
+                step: 0.1,
+                format: { String(format: "%.1fx", $0) }
             )
         }
     }
@@ -215,6 +253,217 @@ struct SearchSettingsView: View {
                     .stroke(Color.white.opacity(0.06), lineWidth: 1)
             )
         }
+    }
+}
+
+// MARK: - Hotkey Settings
+struct HotkeySettingsView: View {
+    @StateObject private var settings = SettingsManager.shared
+    @State private var isListening = false
+
+    private let keyNames: [Int: String] = [
+        0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
+        11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T",
+        31: "O", 32: "U", 34: "I", 35: "P", 37: "L", 38: "J", 39: "K", 40: "N", 42: "M",
+        45: ".", 46: "/", 43: ",", 41: ";", 27: "'", 50: "`", 33: "[", 30: "]", 44: "\\",
+        49: "Space", 53: "Esc",
+        122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
+        98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
+        36: "Return", 48: "Tab", 51: "Delete",
+        123: "Left", 124: "Right", 125: "Down", 126: "Up",
+        115: "Home", 119: "End", 116: "PgUp", 121: "PgDn"
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Global Shortcut")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+
+            HStack(spacing: 12) {
+                Text(hotkeyDisplay)
+                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.secondary.opacity(0.08))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .stroke(isListening ? Color.accentColor : Color.white.opacity(0.08), lineWidth: 1.5)
+                            )
+                    )
+
+                Button {
+                    isListening.toggle()
+                } label: {
+                    Text(isListening ? "Listening..." : "Change")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundColor(isListening ? .accentColor : .primary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(isListening ? Color.accentColor.opacity(0.12) : Color.secondary.opacity(0.08))
+                        )
+                }
+                .buttonStyle(.plain)
+
+                if isListening {
+                    Button {
+                        isListening = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text("Press any key combination while listening is active.")
+                .font(.system(size: 11, weight: .regular, design: .rounded))
+                .foregroundColor(.secondary.opacity(0.6))
+
+            Divider()
+                .background(Color.white.opacity(0.06))
+                .padding(.vertical, 4)
+
+            Text("Modifier Options")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+
+            VStack(spacing: 0) {
+                ToggleRow(icon: "command", title: "Command", subtitle: "Cmd modifier", isOn: $settings.hotkeyCmd)
+                ToggleRow(icon: "shift", title: "Shift", subtitle: "Shift modifier", isOn: $settings.hotkeyShift)
+                ToggleRow(icon: "option", title: "Option", subtitle: "Alt/Option modifier", isOn: $settings.hotkeyOption)
+                ToggleRow(icon: "control", title: "Control", subtitle: "Ctrl modifier", isOn: $settings.hotkeyCtrl)
+            }
+
+            Divider()
+                .background(Color.white.opacity(0.06))
+                .padding(.vertical, 4)
+
+            Text("Common Presets")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+
+            HStack(spacing: 8) {
+                PresetButton(label: "Cmd+Shift+Space") {
+                    settings.hotkeyCmd = true
+                    settings.hotkeyShift = true
+                    settings.hotkeyOption = false
+                    settings.hotkeyCtrl = false
+                    settings.hotkeyKeyCode = 49
+                }
+                PresetButton(label: "Cmd+Space") {
+                    settings.hotkeyCmd = true
+                    settings.hotkeyShift = false
+                    settings.hotkeyOption = false
+                    settings.hotkeyCtrl = false
+                    settings.hotkeyKeyCode = 49
+                }
+                PresetButton(label: "Opt+Space") {
+                    settings.hotkeyCmd = false
+                    settings.hotkeyShift = false
+                    settings.hotkeyOption = true
+                    settings.hotkeyCtrl = false
+                    settings.hotkeyKeyCode = 49
+                }
+                PresetButton(label: "Ctrl+Space") {
+                    settings.hotkeyCmd = false
+                    settings.hotkeyShift = false
+                    settings.hotkeyOption = false
+                    settings.hotkeyCtrl = true
+                    settings.hotkeyKeyCode = 49
+                }
+            }
+        }
+        .background(
+            KeyboardEventListener(isActive: $isListening) { event in
+                guard isListening else { return }
+                let modifiers = event.modifierFlags
+                let hasModifier = modifiers.contains(.command) || modifiers.contains(.shift) ||
+                                  modifiers.contains(.option) || modifiers.contains(.control)
+                guard hasModifier else { return }
+
+                settings.hotkeyKeyCode = Int(event.keyCode)
+                settings.hotkeyCmd = modifiers.contains(.command)
+                settings.hotkeyShift = modifiers.contains(.shift)
+                settings.hotkeyOption = modifiers.contains(.option)
+                settings.hotkeyCtrl = modifiers.contains(.control)
+                isListening = false
+
+                // Re-register global hotkey
+                DispatchQueue.main.async {
+                    GlobalHotkeyManager.shared.unregister()
+                    GlobalHotkeyManager.shared.registerDefaultShortcut {
+                        NotificationCenter.default.post(name: .snythingToggleWindow, object: nil)
+                    }
+                }
+            }
+        )
+    }
+
+    private var hotkeyDisplay: String {
+        var parts: [String] = []
+        if settings.hotkeyCtrl { parts.append("Ctrl") }
+        if settings.hotkeyOption { parts.append("Opt") }
+        if settings.hotkeyShift { parts.append("Shift") }
+        if settings.hotkeyCmd { parts.append("Cmd") }
+        let key = keyNames[settings.hotkeyKeyCode] ?? "Key \(settings.hotkeyKeyCode)"
+        parts.append(key)
+        return parts.joined(separator: "+")
+    }
+}
+
+struct PresetButton: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(.primary.opacity(0.8))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.secondary.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct KeyboardEventListener: View {
+    @Binding var isActive: Bool
+    let onEvent: (NSEvent) -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                if isActive {
+                    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                        guard isActive else { return event }
+                        onEvent(event)
+                        return nil
+                    }
+                }
+            }
+            .onChange(of: isActive) { _, newValue in
+                if newValue {
+                    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                        guard isActive else { return event }
+                        onEvent(event)
+                        return nil
+                    }
+                }
+            }
     }
 }
 

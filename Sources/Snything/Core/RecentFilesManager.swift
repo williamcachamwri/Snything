@@ -2,9 +2,12 @@ import Foundation
 
 final class RecentFilesManager {
     static let shared = RecentFilesManager()
-    private let maxCount = 20
 
     private init() {}
+
+    private var maxCount: Int {
+        SettingsManager.shared.maxRecentsInt
+    }
 
     func recentResults() -> [SearchResult] {
         let fm = FileManager.default

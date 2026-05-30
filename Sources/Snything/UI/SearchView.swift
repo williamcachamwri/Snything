@@ -239,14 +239,16 @@ struct SearchView: View {
                 }
                 return true
             case 125: // down arrow
+                let shift = event.modifierFlags.contains(.shift)
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
-                    coordinator.selectNext()
+                    coordinator.selectNext(shiftHeld: shift)
                 }
                 self.isSearchFocused = false
                 return true
             case 126: // up arrow
+                let shift = event.modifierFlags.contains(.shift)
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
-                    coordinator.selectPrevious()
+                    coordinator.selectPrevious(shiftHeld: shift)
                 }
                 self.isSearchFocused = false
                 return true

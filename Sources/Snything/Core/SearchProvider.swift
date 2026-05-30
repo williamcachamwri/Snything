@@ -33,6 +33,10 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
 
     @Published var deletingResultID: String? = nil
 
+    // Multi-selection state
+    @Published var selectedIndices: Set<Int> = []
+    @Published var lastAnchorIndex: Int? = nil
+
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
@@ -55,16 +59,83 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         }
     }
 
+    // MARK: - Multi-Selection
+
+    var selectedResults: [SearchResult] {
+        selectedIndices.sorted().compactMap { results.indices.contains($0) ? results[$0] : nil }
+    }
+
+    func clearSelection() {
+        selectedIndices.removeAll()
+        lastAnchorIndex = nil
+    }
+
+    func selectIndex(_ index: Int, shiftHeld: Bool = false) {
+        guard results.indices.contains(index) else { return }
+
+        if shiftHeld, let anchor = lastAnchorIndex {
+            // Range selection
+            let range = min(anchor, index)...max(anchor, index)
+            selectedIndices = Set(range)
+        } else {
+            // Single selection, clear multi
+            selectedIndices.removeAll()
+            lastAnchorIndex = index
+        }
+        selectedIndex = index
+        keyboardFocusedIndex = index
+    }
+
+    func toggleSelection(at index: Int) {
+        guard results.indices.contains(index) else { return }
+        if selectedIndices.contains(index) {
+            selectedIndices.remove(index)
+        } else {
+            selectedIndices.insert(index)
+        }
+        lastAnchorIndex = index
+        selectedIndex = index
+        keyboardFocusedIndex = index
+    }
+
+    func selectNext(shiftHeld: Bool = false) {
+        if showingClipboard {
+            guard !clipboardItems.isEmpty else { return }
+            selectedClipboardIndex = (selectedClipboardIndex + 1) % clipboardItems.count
+            clipboardFocusedIndex = selectedClipboardIndex
+            updateClipboardPreview()
+            return
+        }
+        guard !results.isEmpty else { return }
+        let next = (selectedIndex + 1) % results.count
+        selectIndex(next, shiftHeld: shiftHeld)
+        updatePreview()
+    }
+
+    func selectPrevious(shiftHeld: Bool = false) {
+        if showingClipboard {
+            guard !clipboardItems.isEmpty else { return }
+            selectedClipboardIndex = (selectedClipboardIndex - 1 + clipboardItems.count) % clipboardItems.count
+            clipboardFocusedIndex = selectedClipboardIndex
+            updateClipboardPreview()
+            return
+        }
+        guard !results.isEmpty else { return }
+        let prev = (selectedIndex - 1 + results.count) % results.count
+        selectIndex(prev, shiftHeld: shiftHeld)
+        updatePreview()
+    }
+
     private func handleFileSystemChanged() {
         guard !showingClipboard else { return }
 
-        // Prune deleted files from current results
         let validResults = results.filter { fm.fileExists(atPath: $0.path) }
         if validResults.count != results.count {
             withAnimation(.easeOut(duration: 0.15)) {
                 self.results = validResults
                 self.selectedIndex = min(self.selectedIndex, max(0, validResults.count - 1))
                 self.keyboardFocusedIndex = self.selectedIndex
+                self.selectedIndices = self.selectedIndices.filter { $0 < validResults.count }
                 if let preview = self.previewResult, !self.fm.fileExists(atPath: preview.path) {
                     self.showPreview = false
                     self.previewResult = nil
@@ -72,16 +143,15 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             }
         }
 
-        // If showing recents, refresh them
         if showingRecents {
             withAnimation(.easeOut(duration: 0.15)) {
                 self.results = RecentFilesManager.shared.recentResults()
                 self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
                 self.keyboardFocusedIndex = self.selectedIndex
+                self.selectedIndices.removeAll()
             }
         }
 
-        // If showing applications, refresh to catch deleted apps
         if showingApplications {
             self.engine.invalidateAppCache()
             self.performSearch(query: "")
@@ -100,6 +170,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             showingClipboard = false
             selectedIndex = 0
             keyboardFocusedIndex = 0
+            selectedIndices.removeAll()
+            lastAnchorIndex = nil
             isSearching = false
             showPreview = false
             previewResult = nil
@@ -113,6 +185,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             showingClipboard = false
             selectedIndex = 0
             keyboardFocusedIndex = 0
+            selectedIndices.removeAll()
+            lastAnchorIndex = nil
             isSearching = false
             showPreview = false
             previewResult = nil
@@ -121,7 +195,6 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     }
 
     func showClipboardHistory() {
-        // Always refresh items and switch to clipboard mode
         let items = clipboard.items
         withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
             clipboardItems = items
@@ -130,6 +203,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             showingApplications = false
             selectedClipboardIndex = 0
             clipboardFocusedIndex = 0
+            selectedIndices.removeAll()
+            lastAnchorIndex = nil
             isSearching = false
             showPreview = false
             previewResult = nil
@@ -151,12 +226,13 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         engine.cancel()
 
         if showingApplications {
-            // Always search in Applications mode (even empty query shows all apps)
             showingClipboard = false
             showingRecents = false
             isSearching = true
             selectedIndex = 0
             keyboardFocusedIndex = 0
+            selectedIndices.removeAll()
+            lastAnchorIndex = nil
             showPreview = false
             previewResult = nil
 
@@ -188,6 +264,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         isSearching = true
         selectedIndex = 0
         keyboardFocusedIndex = 0
+        selectedIndices.removeAll()
+        lastAnchorIndex = nil
         showPreview = false
         previewResult = nil
 
@@ -215,52 +293,32 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         isSearching = false
     }
 
-    func selectNext() {
-        if showingClipboard {
-            guard !clipboardItems.isEmpty else { return }
-            selectedClipboardIndex = (selectedClipboardIndex + 1) % clipboardItems.count
-            clipboardFocusedIndex = selectedClipboardIndex
-            updateClipboardPreview()
-        } else {
-            guard !results.isEmpty else { return }
-            selectedIndex = (selectedIndex + 1) % results.count
-            keyboardFocusedIndex = selectedIndex
-            updatePreview()
-        }
-    }
-
-    func selectPrevious() {
-        if showingClipboard {
-            guard !clipboardItems.isEmpty else { return }
-            selectedClipboardIndex = (selectedClipboardIndex - 1 + clipboardItems.count) % clipboardItems.count
-            clipboardFocusedIndex = selectedClipboardIndex
-            updateClipboardPreview()
-        } else {
-            guard !results.isEmpty else { return }
-            selectedIndex = (selectedIndex - 1 + results.count) % results.count
-            keyboardFocusedIndex = selectedIndex
-            updatePreview()
-        }
-    }
-
     func openSelected() {
         if showingClipboard {
             guard clipboardItems.indices.contains(selectedClipboardIndex) else { return }
             let item = clipboardItems[selectedClipboardIndex]
             clipboard.pasteToClipboard(item)
             NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
-        } else {
-            guard results.indices.contains(selectedIndex) else { return }
-            let result = results[selectedIndex]
-            NSWorkspace.shared.open(result.url)
-            NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
+            return
         }
+
+        let toOpen = selectedIndices.isEmpty
+            ? (results.indices.contains(selectedIndex) ? [results[selectedIndex]] : [])
+            : selectedResults
+
+        for result in toOpen {
+            NSWorkspace.shared.open(result.url)
+        }
+        NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
     }
 
     func revealSelected() {
-        guard !showingClipboard, results.indices.contains(selectedIndex) else { return }
-        let result = results[selectedIndex]
-        NSWorkspace.shared.selectFile(result.url.path, inFileViewerRootedAtPath: "")
+        guard !showingClipboard else { return }
+        let targets = selectedIndices.isEmpty
+            ? (results.indices.contains(selectedIndex) ? [results[selectedIndex]] : [])
+            : selectedResults
+        guard let first = targets.first else { return }
+        NSWorkspace.shared.selectFile(first.path, inFileViewerRootedAtPath: "")
     }
 
     func deleteSelectedClipboardItem() {
@@ -275,28 +333,52 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     }
 
     func deleteSelectedFile() {
-        guard !showingClipboard, results.indices.contains(selectedIndex) else { return }
-        let result = results[selectedIndex]
+        guard !showingClipboard else { return }
 
-        deletingResultID = result.id
+        let targets: [SearchResult]
+        if selectedIndices.isEmpty, results.indices.contains(selectedIndex) {
+            targets = [results[selectedIndex]]
+        } else {
+            targets = selectedResults
+        }
+        guard !targets.isEmpty else { return }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        // Mark all for deletion
+        let idsToDelete = targets.map(\.id)
+        deletingResultID = idsToDelete.joined(separator: ",")
+
+        // Staggered removal
+        var delay: TimeInterval = 0
+        for (_, result) in targets.enumerated() {
+            let currentDelay = delay
+            delay += 0.06
+            DispatchQueue.main.asyncAfter(deadline: .now() + currentDelay) {
+                withAnimation(.spring(response: 0.30, dampingFraction: 0.75)) {
+                    self.results.removeAll { $0.id == result.id }
+                    self.selectedIndices = self.selectedIndices.filter { idx in
+                        idx < self.results.count
+                    }
+                }
+                do {
+                    try FileManager.default.trashItem(at: result.url, resultingItemURL: nil)
+                } catch {
+                    print("[SearchCoordinator] failed to trash \(result.path): \(error)")
+                }
+            }
+        }
+
+        // Reset after last one
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay + 0.35) {
+            withAnimation(.easeOut(duration: 0.15)) {
                 self.deletingResultID = nil
-                self.results.removeAll { $0.id == result.id }
                 self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
                 self.keyboardFocusedIndex = self.selectedIndex
-                if self.previewResult?.id == result.id {
+                self.selectedIndices.removeAll()
+                self.lastAnchorIndex = nil
+                if let preview = self.previewResult, !self.results.contains(where: { $0.id == preview.id }) {
                     self.showPreview = false
                     self.previewResult = nil
                 }
-            }
-
-            // Actually move to trash
-            do {
-                try FileManager.default.trashItem(at: result.url, resultingItemURL: nil)
-            } catch {
-                print("[SearchCoordinator] failed to trash \(result.path): \(error)")
             }
         }
     }
