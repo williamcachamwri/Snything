@@ -354,4 +354,5 @@ final class LaunchAtLoginManager: ObservableObject {
 extension Notification.Name {
     static let snythingHideWindow = Notification.Name("snythingHideWindow")
     static let snythingReRegisterHotkey = Notification.Name("snythingReRegisterHotkey")
+    static let snythingResetToFiles = Notification.Name("snythingResetToFiles")
 }

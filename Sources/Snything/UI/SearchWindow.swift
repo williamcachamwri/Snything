@@ -201,6 +201,7 @@ final class SearchWindowController: NSWindowController {
             hideWindow()
         } else {
             showWindow(nil)
+            NotificationCenter.default.post(name: .snythingResetToFiles, object: nil)
         }
     }
 

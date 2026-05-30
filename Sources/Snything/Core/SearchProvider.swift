@@ -40,6 +40,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     private let fm = FileManager.default
     private var fsObserver: NSObjectProtocol?
 
+    private var resetObserver: NSObjectProtocol?
+
     init() {
         fsObserver = NotificationCenter.default.addObserver(
             forName: .fileSystemChanged,
@@ -48,10 +50,23 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         ) { [weak self] _ in
             self?.handleFileSystemChanged()
         }
+        resetObserver = NotificationCenter.default.addObserver(
+            forName: .snythingResetToFiles,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if self.showingApplications || self.showingClipboard {
+                self.showRecents()
+            }
+        }
     }
 
     deinit {
         if let observer = fsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = resetObserver {
             NotificationCenter.default.removeObserver(observer)
         }
     }
