@@ -75,6 +75,7 @@ struct ResultRowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .frame(height: 52, alignment: .center)
         .task(id: result.id) {
             await loadTags()
         }
@@ -278,8 +279,8 @@ struct ActionBadge: View {
                         .stroke(color.opacity(0.20), lineWidth: 0.5)
                 )
         )
+        .frame(height: 20)
         .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: showLabel)
     }
 }
 
