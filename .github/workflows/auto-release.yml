@@ -85,15 +85,17 @@ jobs:
           echo "new_tag=v$NEW" >> $GITHUB_OUTPUT
           echo "Bumped: $LATEST -> $NEW"
 
-          # Update build_app.sh
-          sed -i.bak "s/APP_VERSION=\"\${APP_VERSION:-[^\"]*}\"/APP_VERSION=\"\${APP_VERSION:-$NEW}\"/" .github/build_app.sh
-          rm -f .github/build_app.sh.bak
+          # Update build_app.sh (only if different)
+          CURRENT_VER=$(grep 'APP_VERSION=' .github/build_app.sh | sed 's/.*APP_VERSION="\${APP_VERSION:-\([^}]*\)}".*/\1/')
+          if [ "$CURRENT_VER" != "$NEW" ]; then
+            sed -i.bak "s/APP_VERSION=\"\${APP_VERSION:-[^\"]*}\"/APP_VERSION=\"\${APP_VERSION:-$NEW}\"/" .github/build_app.sh
+            rm -f .github/build_app.sh.bak
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/build_app.sh
-          git commit -m "chore: auto-bump version to $NEW [release]"
-          git push origin HEAD:main
+          git diff --cached --quiet || (git commit -m "chore: auto-bump version to $NEW [release]" && git push origin HEAD:main)
 
   build-and-release:
     needs: should-release
