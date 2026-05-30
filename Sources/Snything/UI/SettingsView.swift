@@ -258,6 +258,7 @@ struct AboutSettingsView: View {
 // MARK: - Hotkey Settings
 struct HotkeySettingsView: View {
     @StateObject private var settings = SettingsManager.shared
+    @State private var listeningFor: String? = nil
 
     private let keyNames: [Int: String] = [
         0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
@@ -273,94 +274,114 @@ struct HotkeySettingsView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Global Shortcut")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-
-            HStack(spacing: 12) {
-                Text(hotkeyDisplay)
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Global Shortcut")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(.primary)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.secondary.opacity(0.08))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(Color.white.opacity(0.08), lineWidth: 1.5)
-                            )
-                    )
 
-                Spacer()
+                KeyCaptureBadge(
+                    display: hotkeyDisplay,
+                    isListening: listeningFor == "global",
+                    onTapCapture: { listeningFor = "global" },
+                    onTapCancel: { listeningFor = nil }
+                )
+
+                Text("Modifiers")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .padding(.top, 4)
+
+                VStack(spacing: 0) {
+                    ToggleRow(icon: "command", title: "Command", subtitle: "Cmd modifier", isOn: $settings.hotkeyCmd)
+                    ToggleRow(icon: "shift", title: "Shift", subtitle: "Shift modifier", isOn: $settings.hotkeyShift)
+                    ToggleRow(icon: "option", title: "Option", subtitle: "Alt/Option modifier", isOn: $settings.hotkeyOption)
+                    ToggleRow(icon: "control", title: "Control", subtitle: "Ctrl modifier", isOn: $settings.hotkeyCtrl)
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.06))
+                    .padding(.vertical, 4)
+
+                Text("Presets")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                HStack(spacing: 8) {
+                    PresetButton(label: "Cmd+Space") {
+                        applyPreset(cmd: true, shift: false, opt: false, ctrl: false, key: 49)
+                    }
+                    PresetButton(label: "Cmd+Shift+Space") {
+                        applyPreset(cmd: true, shift: true, opt: false, ctrl: false, key: 49)
+                    }
+                    PresetButton(label: "Opt+Space") {
+                        applyPreset(cmd: false, shift: false, opt: true, ctrl: false, key: 49)
+                    }
+                    PresetButton(label: "Ctrl+Space") {
+                        applyPreset(cmd: false, shift: false, opt: false, ctrl: true, key: 49)
+                    }
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.06))
+                    .padding(.vertical, 4)
+
+                Text("Tab Shortcuts")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                KeyCaptureRow(
+                    icon: "magnifyingglass",
+                    title: "Files",
+                    subtitle: "Switch to Files / Recents",
+                    display: "Cmd + \(keyName(for: settings.tabShortcutFiles))",
+                    isListening: listeningFor == "files",
+                    onTapCapture: { listeningFor = "files" },
+                    onTapCancel: { listeningFor = nil }
+                )
+                KeyCaptureRow(
+                    icon: "square.grid.2x2",
+                    title: "Applications",
+                    subtitle: "Switch to Applications",
+                    display: "Cmd + \(keyName(for: settings.tabShortcutApplications))",
+                    isListening: listeningFor == "apps",
+                    onTapCapture: { listeningFor = "apps" },
+                    onTapCancel: { listeningFor = nil }
+                )
+                KeyCaptureRow(
+                    icon: "doc.on.clipboard",
+                    title: "Clipboard",
+                    subtitle: "Switch to Clipboard History",
+                    display: "Cmd + \(keyName(for: settings.tabShortcutClipboard))",
+                    isListening: listeningFor == "clipboard",
+                    onTapCapture: { listeningFor = "clipboard" },
+                    onTapCancel: { listeningFor = nil }
+                )
             }
-
-            Text("Modifier Options")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-                .padding(.top, 4)
-
-            VStack(spacing: 0) {
-                ToggleRow(icon: "command", title: "Command", subtitle: "Cmd modifier", isOn: $settings.hotkeyCmd)
-                ToggleRow(icon: "shift", title: "Shift", subtitle: "Shift modifier", isOn: $settings.hotkeyShift)
-                ToggleRow(icon: "option", title: "Option", subtitle: "Alt/Option modifier", isOn: $settings.hotkeyOption)
-                ToggleRow(icon: "control", title: "Control", subtitle: "Ctrl modifier", isOn: $settings.hotkeyCtrl)
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.06))
-                .padding(.vertical, 4)
-
-            Text("Common Presets")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-
-            HStack(spacing: 8) {
-                PresetButton(label: "Cmd+Space") {
-                    applyPreset(cmd: true, shift: false, opt: false, ctrl: false, key: 49)
-                }
-                PresetButton(label: "Cmd+Shift+Space") {
-                    applyPreset(cmd: true, shift: true, opt: false, ctrl: false, key: 49)
-                }
-                PresetButton(label: "Opt+Space") {
-                    applyPreset(cmd: false, shift: false, opt: true, ctrl: false, key: 49)
-                }
-                PresetButton(label: "Ctrl+Space") {
-                    applyPreset(cmd: false, shift: false, opt: false, ctrl: true, key: 49)
-                }
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.06))
-                .padding(.vertical, 4)
-
-            Text("Tab Shortcuts")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-
-            TabShortcutRow(
-                icon: "magnifyingglass",
-                title: "Files",
-                subtitle: "Switch to Files / Recents",
-                options: tabKeyOptions,
-                selection: $settings.tabShortcutFiles
-            )
-            TabShortcutRow(
-                icon: "square.grid.2x2",
-                title: "Applications",
-                subtitle: "Switch to Applications",
-                options: tabKeyOptions,
-                selection: $settings.tabShortcutApplications
-            )
-            TabShortcutRow(
-                icon: "doc.on.clipboard",
-                title: "Clipboard",
-                subtitle: "Switch to Clipboard History",
-                options: tabKeyOptions,
-                selection: $settings.tabShortcutClipboard
-            )
         }
+        .background(
+            KeyEventListener(isActive: listeningFor != nil) { event in
+                let code = Int(event.keyCode)
+                switch listeningFor {
+                case "global":
+                    settings.hotkeyKeyCode = code
+                    NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
+                case "files":
+                    settings.tabShortcutFiles = code
+                case "apps":
+                    settings.tabShortcutApplications = code
+                case "clipboard":
+                    settings.tabShortcutClipboard = code
+                default:
+                    break
+                }
+                listeningFor = nil
+            }
+        )
+    }
+
+    private func keyName(for code: Int) -> String {
+        keyNames[code] ?? "Key \(code)"
     }
 
     private func applyPreset(cmd: Bool, shift: Bool, opt: Bool, ctrl: Bool, key: Int) {
@@ -372,20 +393,6 @@ struct HotkeySettingsView: View {
         NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
     }
 
-    private var tabKeyOptions: [(code: Int, label: String)] {
-        [
-            (0, "A"), (11, "B"), (8, "C"), (2, "D"), (14, "E"),
-            (3, "F"), (5, "G"), (4, "H"), (34, "I"), (38, "J"),
-            (40, "K"), (37, "L"), (46, "M"), (42, "N"), (31, "O"),
-            (35, "P"), (12, "Q"), (15, "R"), (1, "S"), (17, "T"),
-            (32, "U"), (9, "V"), (13, "W"), (7, "X"), (16, "Y"),
-            (6, "Z"),
-            (122, "F1"), (120, "F2"), (99, "F3"), (118, "F4"),
-            (96, "F5"), (97, "F6"), (98, "F7"), (100, "F8"),
-            (101, "F9"), (109, "F10"), (103, "F11"), (111, "F12")
-        ]
-    }
-
     private var hotkeyDisplay: String {
         var parts: [String] = []
         if settings.hotkeyCtrl { parts.append("Ctrl") }
@@ -395,6 +402,210 @@ struct HotkeySettingsView: View {
         let key = keyNames[settings.hotkeyKeyCode] ?? "Key \(settings.hotkeyKeyCode)"
         parts.append(key)
         return parts.joined(separator: "+")
+    }
+}
+
+// MARK: - Key Capture Components
+struct KeyCaptureBadge: View {
+    let display: String
+    let isListening: Bool
+    let onTapCapture: () -> Void
+    let onTapCancel: () -> Void
+
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 6) {
+                if isListening {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .frame(width: 6, height: 6)
+                        .opacity(pulse ? 0.4 : 1.0)
+                    Text("Listening...")
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.accentColor)
+                } else {
+                    Text(display)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.primary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(isListening ? Color.accentColor.opacity(0.10) : Color.secondary.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(isListening ? Color.accentColor.opacity(0.35) : Color.white.opacity(0.08), lineWidth: 1.5)
+                    )
+            )
+
+            Spacer()
+
+            Button {
+                if isListening {
+                    onTapCancel()
+                } else {
+                    onTapCapture()
+                }
+            } label: {
+                Text(isListening ? "Cancel" : "Change")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundColor(isListening ? .secondary : .primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(isListening ? Color.secondary.opacity(0.08) : Color.accentColor.opacity(0.12))
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .onAppear {
+            if isListening {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+        }
+        .onChange(of: isListening) { _, new in
+            if new {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            } else {
+                pulse = false
+            }
+        }
+    }
+}
+
+struct KeyCaptureRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let display: String
+    let isListening: Bool
+    let onTapCapture: () -> Void
+    let onTapCancel: () -> Void
+
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.7))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                HStack(spacing: 4) {
+                    Image(systemName: "command")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(isListening ? .accentColor.opacity(0.7) : .secondary.opacity(0.5))
+                    Text("+")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(isListening ? .accentColor.opacity(0.6) : .secondary.opacity(0.4))
+
+                    if isListening {
+                        Circle()
+                            .fill(Color.accentColor)
+                            .frame(width: 5, height: 5)
+                            .opacity(pulse ? 0.3 : 1.0)
+                    } else {
+                        Text(display.components(separatedBy: "+ ").last ?? "?")
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.primary)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(isListening ? Color.accentColor.opacity(0.08) : Color.secondary.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(isListening ? Color.accentColor.opacity(0.3) : Color.white.opacity(0.06), lineWidth: 1)
+                        )
+                )
+
+                Button {
+                    if isListening {
+                        onTapCancel()
+                    } else {
+                        onTapCapture()
+                    }
+                } label: {
+                    Text(isListening ? "Cancel" : "Change")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(isListening ? .secondary : .primary.opacity(0.85))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                .fill(isListening ? Color.secondary.opacity(0.06) : Color.accentColor.opacity(0.10))
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 2)
+        .onAppear {
+            if isListening {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+        }
+        .onChange(of: isListening) { _, new in
+            if new {
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            } else {
+                pulse = false
+            }
+        }
+    }
+}
+
+struct KeyEventListener: View {
+    let isActive: Bool
+    let onEvent: (NSEvent) -> Void
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onChange(of: isActive) { _, active in
+                if active {
+                    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                        guard isActive else { return event }
+                        // Ignore bare modifiers and ESC during capture
+                        let isBareModifier = event.keyCode == 54 || event.keyCode == 55 ||
+                                              event.keyCode == 56 || event.keyCode == 58 ||
+                                              event.keyCode == 59 || event.keyCode == 60 ||
+                                              event.keyCode == 61 || event.keyCode == 62
+                        if !isBareModifier {
+                            onEvent(event)
+                        }
+                        return nil
+                    }
+                }
+            }
     }
 }
 
@@ -415,84 +626,6 @@ struct PresetButton: View {
                 )
         }
         .buttonStyle(.plain)
-    }
-}
-
-struct TabShortcutRow: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let options: [(code: Int, label: String)]
-    @Binding var selection: Int
-    @State private var isOpen = false
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.secondary.opacity(0.7))
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundColor(.primary)
-                Text(subtitle)
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-
-            Spacer()
-
-            Menu {
-                ForEach(options, id: \.code) { opt in
-                    Button {
-                        withAnimation(.easeOut(duration: 0.1)) {
-                            selection = opt.code
-                        }
-                    } label: {
-                        HStack {
-                            Text(opt.label)
-                            if selection == opt.code {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
-                            }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "command")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.secondary.opacity(0.6))
-                    Text("+")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary.opacity(0.5))
-                    Text(currentLabel)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.primary)
-                        .frame(minWidth: 24)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.secondary.opacity(0.08))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                        )
-                )
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 72)
-        }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 2)
-    }
-
-    private var currentLabel: String {
-        options.first(where: { $0.code == selection })?.label ?? "?"
     }
 }
 
