@@ -35,52 +35,54 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
     private let fm = FileManager.default
+    private var fsObserver: NSObjectProtocol?
 
     init() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleFileSystemChanged),
-            name: .fileSystemChanged,
-            object: nil
-        )
+        fsObserver = NotificationCenter.default.addObserver(
+            forName: .fileSystemChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleFileSystemChanged()
+        }
     }
 
-    @objc private func handleFileSystemChanged() {
+    deinit {
+        if let observer = fsObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    private func handleFileSystemChanged() {
         guard !showingClipboard else { return }
 
         // Prune deleted files from current results
         let validResults = results.filter { fm.fileExists(atPath: $0.path) }
         if validResults.count != results.count {
-            DispatchQueue.main.async {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    self.results = validResults
-                    self.selectedIndex = min(self.selectedIndex, max(0, validResults.count - 1))
-                    self.keyboardFocusedIndex = self.selectedIndex
-                    if let preview = self.previewResult, !self.fm.fileExists(atPath: preview.path) {
-                        self.showPreview = false
-                        self.previewResult = nil
-                    }
+            withAnimation(.easeOut(duration: 0.15)) {
+                self.results = validResults
+                self.selectedIndex = min(self.selectedIndex, max(0, validResults.count - 1))
+                self.keyboardFocusedIndex = self.selectedIndex
+                if let preview = self.previewResult, !self.fm.fileExists(atPath: preview.path) {
+                    self.showPreview = false
+                    self.previewResult = nil
                 }
             }
         }
 
         // If showing recents, refresh them
         if showingRecents {
-            DispatchQueue.main.async {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    self.results = RecentFilesManager.shared.recentResults()
-                    self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
-                    self.keyboardFocusedIndex = self.selectedIndex
-                }
+            withAnimation(.easeOut(duration: 0.15)) {
+                self.results = RecentFilesManager.shared.recentResults()
+                self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
+                self.keyboardFocusedIndex = self.selectedIndex
             }
         }
 
         // If showing applications, refresh to catch deleted apps
         if showingApplications {
-            DispatchQueue.main.async {
-                self.engine.invalidateAppCache()
-                self.performSearch(query: "")
-            }
+            self.engine.invalidateAppCache()
+            self.performSearch(query: "")
         }
     }
 

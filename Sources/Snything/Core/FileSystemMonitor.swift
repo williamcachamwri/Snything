@@ -14,12 +14,14 @@ final class FileSystemMonitor {
     func start() {
         stop()
 
-        let pathsToWatch = [
-            NSHomeDirectory(),
-            "/Applications",
-            "/System/Applications",
-            "/Users"
-        ]
+        var pathsToWatch: [String] = [NSHomeDirectory()]
+        if FileManager.default.fileExists(atPath: "/Applications") {
+            pathsToWatch.append("/Applications")
+        }
+        if FileManager.default.fileExists(atPath: "/System/Applications") {
+            pathsToWatch.append("/System/Applications")
+        }
+        pathsToWatch.append("/Users")
 
         let callback: FSEventStreamCallback = { _, clientCallBackInfo, numEvents, eventPaths, eventFlags, _ in
             guard let clientCallBackInfo else { return }
@@ -38,8 +40,7 @@ final class FileSystemMonitor {
         let cfPaths = pathsToWatch as CFArray
         let flags = FSEventStreamCreateFlags(
             kFSEventStreamCreateFlagUseCFTypes |
-            kFSEventStreamCreateFlagFileEvents |
-            kFSEventStreamCreateFlagNoDefer
+            kFSEventStreamCreateFlagFileEvents
         )
 
         stream = FSEventStreamCreate(
@@ -48,7 +49,7 @@ final class FileSystemMonitor {
             &context,
             cfPaths,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
-            1.0,
+            2.0,
             flags
         )
 
@@ -69,8 +70,6 @@ final class FileSystemMonitor {
     }
 
     private func handleEvents(numEvents: Int, eventPaths: UnsafeMutableRawPointer, eventFlags: UnsafePointer<FSEventStreamEventFlags>) {
-        _ = eventPaths.assumingMemoryBound(to: CFArray.self).pointee as? [String]
-
         var hasDeletions = false
         for i in 0..<numEvents {
             let flags = eventFlags[i]
@@ -84,7 +83,6 @@ final class FileSystemMonitor {
 
         guard hasDeletions else { return }
 
-        // Debounce: many events fire in a burst
         debounceTimer?.invalidate()
         debounceTimer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: false) { _ in
             NotificationCenter.default.post(name: .fileSystemChanged, object: nil)
