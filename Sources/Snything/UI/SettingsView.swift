@@ -358,36 +358,42 @@ struct HotkeySettingsView: View {
                 }
             }
         }
-        .background(
-            KeyEventListener(isActive: listeningFor != nil) { event in
-                let code = Int(event.keyCode)
-                if code == 53 { // Esc
-                    cancelCapture()
-                    return
-                }
-                if code == 36 { // Return / Enter
-                    confirmCapture()
-                    return
-                }
-                if listeningFor == "global" {
-                    let mods = event.modifierFlags
-                    settings.hotkeyCmd = mods.contains(.command)
-                    settings.hotkeyShift = mods.contains(.shift)
-                    settings.hotkeyOption = mods.contains(.option)
-                    settings.hotkeyCtrl = mods.contains(.control)
-                    settings.hotkeyKeyCode = code
-                    NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
-                    listeningFor = nil
-                    return
-                }
-                // Tab chord capture
-                if capturedKeys.count >= 3 {
-                    return
-                }
-                capturedKeys.append(code)
-                resetConfirmTimer()
+        .onChange(of: listeningFor) { _, new in
+            NotificationCenter.default.post(
+                name: .snythingSettingsCaptureStateChanged,
+                object: nil,
+                userInfo: ["isActive": new != nil]
+            )
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .snythingSettingsKeyCaptured)) { notification in
+            guard let code = notification.userInfo?["keyCode"] as? Int else { return }
+            if code == 53 { // Esc
+                cancelCapture()
+                return
             }
-        )
+            if code == 36 { // Return / Enter
+                confirmCapture()
+                return
+            }
+            if listeningFor == "global" {
+                let rawMods = notification.userInfo?["modifiers"] as? UInt ?? 0
+                let mods = NSEvent.ModifierFlags(rawValue: rawMods)
+                settings.hotkeyCmd = mods.contains(.command)
+                settings.hotkeyShift = mods.contains(.shift)
+                settings.hotkeyOption = mods.contains(.option)
+                settings.hotkeyCtrl = mods.contains(.control)
+                settings.hotkeyKeyCode = code
+                NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
+                listeningFor = nil
+                return
+            }
+            // Tab chord capture
+            if capturedKeys.count >= 3 {
+                return
+            }
+            capturedKeys.append(code)
+            resetConfirmTimer()
+        }
     }
 
     private func startCapture(for target: String) {
@@ -650,32 +656,6 @@ struct KeyCaptureRow: View {
         if sequence.isEmpty { return "..." }
         let labels = sequence.map { keyNames[$0] ?? "Key \($0)" }
         return labels.joined(separator: " + ")
-    }
-}
-
-struct KeyEventListener: View {
-    let isActive: Bool
-    let onEvent: (NSEvent) -> Void
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .onChange(of: isActive) { _, active in
-                if active {
-                    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                        guard isActive else { return event }
-                        // Ignore bare modifiers
-                        let isBareModifier = event.keyCode == 54 || event.keyCode == 55 ||
-                                              event.keyCode == 56 || event.keyCode == 58 ||
-                                              event.keyCode == 59 || event.keyCode == 60 ||
-                                              event.keyCode == 61 || event.keyCode == 62
-                        if !isBareModifier {
-                            onEvent(event)
-                        }
-                        return nil
-                    }
-                }
-            }
     }
 }
 

@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var onboardingWindow: NSWindow?
     private var onboardingBackdrop: NSWindow?
     private var searchWindowController: SearchWindowController?
-    private var settingsWindow: NSWindow?
+    private var settingsWindow: SettingsKeyCaptureWindow?
     private var statusItem: NSStatusItem?
     private var outsideClickMonitor: Any?
     private let hasCompletedOnboardingKey = "hasCompletedOnboarding"
@@ -204,11 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         searchWindowController?.hideWindow()
         GlobalHotkeyManager.shared.unregister()
 
-        let window = createHostingWindow(
-            rootView: SettingsView(),
-            size: NSSize(width: 480, height: 420),
-            level: .modalPanel
-        )
+        let window = createSettingsWindow(rootView: SettingsView(), size: NSSize(width: 480, height: 420))
         window.delegate = self
         self.settingsWindow = window
         window.makeKeyAndOrderFront(nil)
@@ -222,16 +218,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - NSWindowDelegate (Settings)
 
     func windowWillClose(_ notification: Notification) {
-        guard let window = notification.object as? NSWindow, window == settingsWindow else { return }
+        guard let window = notification.object as? SettingsKeyCaptureWindow, window == settingsWindow else { return }
         settingsWindow = nil
         // Re-register global hotkey after settings closes
         GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
-            guard let self = self else { return }
-            if self.searchWindowController?.window?.isVisible == true {
-                NotificationCenter.default.post(name: .snythingChordTriggered, object: nil)
-            } else {
-                self.searchWindowController?.toggleVisibility()
-            }
+            self?.searchWindowController?.toggleVisibility()
         }
     }
 
@@ -351,6 +342,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         return panel
     }
+
+    private func createSettingsWindow(rootView: SettingsView, size: NSSize) -> SettingsKeyCaptureWindow {
+        let window = SettingsKeyCaptureWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.level = .modalPanel
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.center()
+        window.isMovableByWindowBackground = false
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        let hostingView = NSHostingView(rootView: rootView)
+        hostingView.frame = NSRect(origin: .zero, size: size)
+        window.contentView = hostingView
+
+        return window
+    }
+}
+
+// MARK: - Settings Key Capture Window
+final class SettingsKeyCaptureWindow: NSPanel {
+    var isCapturing = false
+
+    override init(contentRect: NSRect, styleMask: NSWindow.StyleMask, backing: NSWindow.BackingStoreType, defer: Bool) {
+        super.init(contentRect: contentRect, styleMask: styleMask, backing: backing, defer: `defer`)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(captureStateChanged(_:)),
+            name: .snythingSettingsCaptureStateChanged,
+            object: nil
+        )
+    }
+
+    @objc private func captureStateChanged(_ notification: Notification) {
+        isCapturing = notification.userInfo?["isActive"] as? Bool ?? false
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if isCapturing, event.type == .keyDown {
+            let isBareModifier = event.keyCode == 54 || event.keyCode == 55 ||
+                                 event.keyCode == 56 || event.keyCode == 58 ||
+                                 event.keyCode == 59 || event.keyCode == 60 ||
+                                 event.keyCode == 61 || event.keyCode == 62
+            if !isBareModifier {
+                NotificationCenter.default.post(
+                    name: .snythingSettingsKeyCaptured,
+                    object: nil,
+                    userInfo: [
+                        "keyCode": Int(event.keyCode),
+                        "modifiers": event.modifierFlags.rawValue
+                    ]
+                )
+                return
+            }
+        }
+        super.sendEvent(event)
+    }
 }
 
 // MARK: - Launch at Login Manager
@@ -379,4 +432,7 @@ extension Notification.Name {
     static let snythingResetToFiles = Notification.Name("snythingResetToFiles")
     static let snythingChordTriggered = Notification.Name("snythingChordTriggered")
     static let snythingWindowShown = Notification.Name("snythingWindowShown")
+    static let snythingWindowHidden = Notification.Name("snythingWindowHidden")
+    static let snythingSettingsKeyCaptured = Notification.Name("snythingSettingsKeyCaptured")
+    static let snythingSettingsCaptureStateChanged = Notification.Name("snythingSettingsCaptureStateChanged")
 }

@@ -60,10 +60,14 @@ struct SearchView: View {
         }
         .onDisappear {
             coordinator.cancel()
+            coordinator.cancelChord()
             KeyboardManager.shared.stopMonitoring()
             KeyboardManager.shared.onKeyDown = nil
             stopRecentsTimer()
             stopClipboardTimer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .snythingWindowHidden)) { _ in
+            coordinator.cancelChord()
         }
         .background(Color.clear)
     }

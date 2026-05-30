@@ -194,6 +194,8 @@ final class SearchWindowController: NSWindowController {
             layer.setValue(0.0, forKeyPath: "transform.translation.y")
             layer.setValue(1.0, forKeyPath: "opacity")
             layer.setValue(0.0, forKeyPath: "shadowOpacity")
+            // Notify that search window was hidden (for chord cleanup)
+            NotificationCenter.default.post(name: .snythingWindowHidden, object: nil)
         }
     }
 
