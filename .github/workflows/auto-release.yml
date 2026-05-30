@@ -46,7 +46,7 @@ jobs:
           CURRENT=$(grep 'APP_VERSION=' .github/build_app.sh | sed 's/.*APP_VERSION="\${APP_VERSION:-\([^}]*\)}".*/\1/')
 
           # Parse and compare
-          python3 << PYEOF
+          python3 << PYEOF >> $GITHUB_OUTPUT
           import os, sys
 
           def parse(v):
