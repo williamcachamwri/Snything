@@ -59,6 +59,10 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>SUFeedURL</key>
+    <string>https://raw.githubusercontent.com/williamcachamwri/Snything/main/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>YOUR_ED_PUBLIC_KEY_HERE</string>
 </dict>
 </plist>
 EOF
@@ -69,6 +73,21 @@ fi
 
 if [ -f "Snything.entitlements" ]; then
     cp "Snything.entitlements" "${APP_BUNDLE}/Contents/Resources/"
+fi
+
+# Copy Sparkle framework and helper tools into the bundle
+echo "Copying Sparkle framework..."
+SPARKLE_BUILD="${BUILD_DIR}/release/Sparkle"
+if [ -d "${SPARKLE_BUILD}.framework" ]; then
+    mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
+    cp -R "${SPARKLE_BUILD}.framework" "${APP_BUNDLE}/Contents/Frameworks/"
+fi
+
+# Find Sparkle artifacts from SPM
+cd "${PROJECT_ROOT}"
+SPARKLE_CHECK=$(swift package show-dependencies 2>/dev/null | grep "Sparkle" || true)
+if [ -n "${SPARKLE_CHECK}" ]; then
+    echo "Sparkle dependency found in SPM"
 fi
 
 echo "Signing app bundle..."

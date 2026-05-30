@@ -188,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func checkForUpdatesIfEnabled() {
         if SettingsManager.shared.autoCheckUpdates {
-            UpdateManager.shared.checkForUpdates()
+            UpdateManager.shared.startAutomaticChecks()
         }
     }
 

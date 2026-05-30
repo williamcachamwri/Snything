@@ -1,226 +1,114 @@
 import Foundation
 import AppKit
-import SwiftUI
+import Sparkle
 
-final class UpdateManager: ObservableObject {
+final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     static let shared = UpdateManager()
 
     @Published var isChecking = false
     @Published var showAlert = false
     @Published var alertVersion: String = ""
     @Published var alertReleaseNotes: String = ""
-    @Published var downloadURL: URL?
     @Published var statusMessage: String?
 
-    private let repoAPI = "https://api.github.com/repos/williamcachamwri/Snything/releases/latest"
-    private let releasesPage = "https://github.com/williamcachamwri/Snything/releases/latest"
-    private let lastPromptedTagKey = "snything.lastPromptedReleaseTag"
+    private var updaterController: SPUStandardUpdaterController!
 
-    /// Current installed app version from Info.plist (e.g. "1.0.8")
-    private var currentAppVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+    private override init() {
+        super.init()
+
+        updaterController = SPUStandardUpdaterController(
+            startingUpdater: false,
+            updaterDelegate: self,
+            userDriverDelegate: nil
+        )
+
+        // Configure Sparkle updater
+        updaterController.updater.automaticallyChecksForUpdates = SettingsManager.shared.autoCheckUpdates
+        updaterController.updater.automaticallyDownloadsUpdates = false
+        updaterController.updater.updateCheckInterval = 24 * 60 * 60 // daily
     }
-
-    private init() {}
 
     // MARK: - Public API
 
+    func startAutomaticChecks() {
+        updaterController.startUpdater()
+    }
+
+    /// Check for updates. If `showAnyway` is true, always show UI even if no update.
     func checkForUpdates(showAnyway: Bool = false) {
         guard !isChecking else { return }
         isChecking = true
-        showAlert = false
         statusMessage = nil
 
-        guard let url = URL(string: repoAPI) else {
-            finishCheck()
-            return
+        if showAnyway {
+            updaterController.checkForUpdates(nil)
+        } else {
+            updaterController.updater.checkForUpdatesInBackground()
         }
 
-        var request = URLRequest(url: url)
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.timeoutInterval = 15
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-
-                if let error = error {
-                    self.statusMessage = "Update check failed: \(error.localizedDescription)"
-                    self.finishCheck()
-                    return
-                }
-
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let tagName = json["tag_name"] as? String else {
-                    self.finishCheck()
-                    return
-                }
-
-                let lastPrompted = UserDefaults.standard.string(forKey: self.lastPromptedTagKey)
-                if !showAnyway, tagName == lastPrompted {
-                    self.finishCheck()
-                    return
-                }
-
-                let version = tagName.trimmingCharacters(in: CharacterSet(charactersIn: "v"))
-
-                // Skip if already running the latest version
-                if version == self.currentAppVersion {
-                    self.statusMessage = "You're on the latest version (v\(version))."
-                    self.finishCheck()
-                    return
-                }
-
-                self.findDMGAsset(in: json)
-
-                self.alertVersion = version
-                self.alertReleaseNotes = json["body"] as? String ?? ""
-                self.showAlert = true
-
-                UserDefaults.standard.set(tagName, forKey: self.lastPromptedTagKey)
-
-                self.finishCheck()
-
-                // Show independent modal window — not tied to search panel
-                ChangelogWindowController.shared.showAnimated()
-            }
-        }.resume()
+        // Sparkle handles the UI; we just track the check state briefly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.isChecking = false
+        }
     }
 
     func installUpdate() {
-        guard let downloadURL = downloadURL else {
-            NSWorkspace.shared.open(URL(string: releasesPage)!)
-            return
-        }
-
-        statusMessage = "Downloading update..."
-        ChangelogWindowController.shared.dismissAnimated()
-
-        let tempDir = FileManager.default.temporaryDirectory
-        let dmgPath = tempDir.appendingPathComponent("Snything-Update.dmg")
-        try? FileManager.default.removeItem(at: dmgPath)
-
-        let task = URLSession.shared.downloadTask(with: downloadURL) { [weak self] localURL, response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-
-                if let error = error {
-                    self.statusMessage = "Download failed: \(error.localizedDescription)"
-                    return
-                }
-                guard let localURL = localURL else {
-                    self.statusMessage = "Download failed."
-                    return
-                }
-                do {
-                    try FileManager.default.moveItem(at: localURL, to: dmgPath)
-                    self.mountAndInstall(dmgPath: dmgPath)
-                } catch {
-                    self.statusMessage = "Failed to prepare update: \(error.localizedDescription)"
-                }
-            }
-        }
-        task.resume()
+        updaterController.checkForUpdates(nil)
     }
 
     func skipUpdate() {
-        showAlert = false
-        ChangelogWindowController.shared.dismissAnimated()
+        // Sparkle manages skip logic internally via user preferences
     }
 
-    // MARK: - Private
+    // MARK: - SPUUpdaterDelegate
 
-    private func finishCheck() {
-        isChecking = false
+    func feedURLString(for updater: SPUUpdater) -> String? {
+        VersionManager.shared.appcastURL.absoluteString
     }
 
-    private func findDMGAsset(in json: [String: Any]) {
-        guard let assets = json["assets"] as? [[String: Any]] else { return }
-        for asset in assets {
-            if let name = asset["name"] as? String,
-               name.hasSuffix(".dmg"),
-               let urlString = asset["browser_download_url"] as? String,
-               let url = URL(string: urlString) {
-                downloadURL = url
-                return
+    func updater(
+        _ updater: SPUUpdater,
+        mayPerform updateCheck: SPUUpdateCheck
+    ) throws -> Bool {
+        true
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        didFindValidUpdate item: SUAppcastItem
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            self?.alertVersion = item.displayVersionString
+            self?.alertReleaseNotes = item.itemDescription ?? ""
+            self?.showAlert = true
+            self?.statusMessage = "Update available: v\(item.displayVersionString)"
+            ChangelogWindowController.shared.showAnimated()
+        }
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        didNotFindUpdate error: Error
+    ) {
+        DispatchQueue.main.async { [weak self] in
+            let nsError = error as NSError
+            if nsError.domain == "SPUErrorDomain" && nsError.code == 1001 {
+                self?.statusMessage = "You're on the latest version."
+            } else {
+                self?.statusMessage = "Update check failed: \(error.localizedDescription)"
             }
-        }
-        downloadURL = nil
-    }
-
-    private func mountAndInstall(dmgPath: URL) {
-        statusMessage = "Installing update..."
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        process.arguments = ["attach", dmgPath.path, "-nobrowse", "-noverify"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-        } catch {
-            statusMessage = "Failed to mount update: \(error.localizedDescription)"
-            return
-        }
-
-        process.waitUntilExit()
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        guard let output = String(data: data, encoding: .utf8) else {
-            statusMessage = "Failed to read mounted volume."
-            return
-        }
-
-        let lines = output.components(separatedBy: .newlines)
-        var mountPoint: String?
-        for line in lines {
-            let parts = line.components(separatedBy: "\t")
-            if parts.count >= 3, parts[2].hasPrefix("/Volumes/") {
-                mountPoint = parts[2].trimmingCharacters(in: .whitespaces)
-                break
-            }
-        }
-
-        guard let volPath = mountPoint else {
-            statusMessage = "Could not find mounted DMG."
-            return
-        }
-
-        let sourceApp = URL(fileURLWithPath: volPath).appendingPathComponent("Snything.app")
-        let targetApp = URL(fileURLWithPath: "/Applications/Snything.app")
-
-        do {
-            if FileManager.default.fileExists(atPath: targetApp.path) {
-                try FileManager.default.removeItem(at: targetApp)
-            }
-            try FileManager.default.copyItem(at: sourceApp, to: targetApp)
-        } catch {
-            statusMessage = "Failed to install: \(error.localizedDescription)"
-            detach(mountPoint: volPath)
-            return
-        }
-
-        detach(mountPoint: volPath)
-        try? FileManager.default.removeItem(at: dmgPath)
-
-        statusMessage = "Update installed. Relaunching..."
-        let relaunchTask = Process()
-        relaunchTask.executableURL = URL(fileURLWithPath: "/bin/bash")
-        relaunchTask.arguments = ["-c", "sleep 1; open -a /Applications/Snything.app"]
-        try? relaunchTask.run()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            NSApp.terminate(nil)
+            self?.isChecking = false
         }
     }
 
-    private func detach(mountPoint: String) {
-        let detachProcess = Process()
-        detachProcess.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        detachProcess.arguments = ["detach", mountPoint]
-        try? detachProcess.run()
+    func updater(
+        _ updater: SPUUpdater,
+        willInstallUpdate item: SUAppcastItem
+    ) {
+        statusMessage = "Installing v\(item.displayVersionString)..."
+    }
+
+    func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        statusMessage = "Relaunching..."
     }
 }
