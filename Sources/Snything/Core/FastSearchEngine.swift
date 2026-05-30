@@ -279,12 +279,13 @@ final class FastSearchEngine: @unchecked Sendable {
     // MARK: - OCR Content Search
 
     private func runOCRSearch(query: String, maxResults: Int) async -> [SearchResult] {
-        let paths = OCRIndexManager.shared.pathsMatching(query: query)
+        let lowerQuery = query.lowercased()
         let fm = FileManager.default
         var results: [SearchResult] = []
-        results.reserveCapacity(min(paths.count, maxResults))
 
-        for path in paths.prefix(maxResults) {
+        // Phase 1: Search the pre-built OCR index
+        let indexedPaths = OCRIndexManager.shared.pathsMatching(query: lowerQuery)
+        for path in indexedPaths.prefix(maxResults) {
             guard !Task.isCancelled else { break }
             guard fm.fileExists(atPath: path) else { continue }
             let url = URL(fileURLWithPath: path)
@@ -295,11 +296,91 @@ final class FastSearchEngine: @unchecked Sendable {
                 kind: .image,
                 size: url.fileSize(),
                 modifiedDate: url.modDate(),
-                relevanceScore: 0.7, // Slightly lower than direct name matches
+                relevanceScore: 0.7,
                 subtitle: "Image containing '\(query)'"
             ))
         }
+
+        // Phase 2: If few indexed results, OCR recent images on-demand
+        let remaining = maxResults - results.count
+        if remaining > 0 {
+            let recentImages = await discoverRecentImagesForOCR(max: remaining * 3)
+            for path in recentImages {
+                guard !Task.isCancelled else { break }
+                guard fm.fileExists(atPath: path) else { continue }
+                guard !results.contains(where: { $0.path == path }) else { continue }
+
+                if let ocrText = await OCRIndexManager.shared.ocrImageOnDemand(path: path),
+                   ocrText.lowercased().contains(lowerQuery) {
+                    let url = URL(fileURLWithPath: path)
+                    results.append(SearchResult(
+                        url: url,
+                        name: url.lastPathComponent,
+                        path: url.path,
+                        kind: .image,
+                        size: url.fileSize(),
+                        modifiedDate: url.modDate(),
+                        relevanceScore: 0.65,
+                        subtitle: "Image containing '\(query)'"
+                    ))
+                    if results.count >= maxResults { break }
+                }
+            }
+        }
+
         return results
+    }
+
+    /// Find recently modified images in search scopes for on-demand OCR.
+    private func discoverRecentImagesForOCR(max: Int) async -> [String] {
+        let scopes = SettingsManager.shared.searchScopes
+        let fm = FileManager.default
+        let imageUTIs = [
+            "public.png", "public.jpeg", "public.tiff", "public.gif",
+            "public.webp", "public.heic", "public.bmp"
+        ]
+        let typePred = imageUTIs.map { "kMDItemContentType == '\($0)'" }.joined(separator: " || ")
+        // Only images modified in last 14 days
+        let datePred = "kMDItemFSContentChangeDate >= $time.now(-1209600)"
+        let predicate = "(\(typePred)) && \(datePred)"
+
+        var allPaths: [String] = []
+        for scope in scopes {
+            guard !Task.isCancelled else { break }
+            let resolved = scope.hasPrefix("/") ? scope : (scope == "Library" ? NSHomeDirectory() + "/Library" : fm.currentDirectoryPath + "/" + scope)
+            guard fm.fileExists(atPath: resolved) else { continue }
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+            process.arguments = ["-onlyin", resolved, predicate]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+            do { try process.run() } catch { continue }
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard !Task.isCancelled else { return [] }
+
+            let paths = String(data: data, encoding: .utf8)?.components(separatedBy: .newlines).filter { !$0.isEmpty } ?? []
+            allPaths.append(contentsOf: paths)
+        }
+
+        // Sort by recency, deduplicate, limit
+        let sorted = allPaths.sorted { a, b in
+            let da = (try? fm.attributesOfItem(atPath: a)[.modificationDate] as? Date) ?? .distantPast
+            let db = (try? fm.attributesOfItem(atPath: b)[.modificationDate] as? Date) ?? .distantPast
+            return da > db
+        }
+        var seen = Set<String>()
+        var unique: [String] = []
+        for path in sorted {
+            if seen.insert(path).inserted {
+                unique.append(path)
+                if unique.count >= max { break }
+            }
+        }
+        return unique
     }
 
     // MARK: - Predicate Escaping

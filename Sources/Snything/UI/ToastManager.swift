@@ -74,10 +74,8 @@ final class ToastManager: ObservableObject {
 // MARK: - Toast Panel
 
 final class ToastPanel: NSPanel {
-    private var visualEffectView: NSVisualEffectView!
-
     init() {
-        let panelHeight: CGFloat = 76
+        let panelHeight: CGFloat = 84
         let panelWidth: CGFloat = 340
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
@@ -93,7 +91,20 @@ final class ToastPanel: NSPanel {
         self.isReleasedWhenClosed = false
         self.collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .stationary]
 
-        // NSVisualEffectView as the actual panel background
+        // Container view handles shadow + corner radius
+        let container = NSView()
+        container.wantsLayer = true
+        container.layer = CALayer()
+        container.layer?.cornerRadius = 14
+        container.layer?.masksToBounds = false
+        container.layer?.shadowColor = NSColor.black.cgColor
+        container.layer?.shadowOpacity = 0.45
+        container.layer?.shadowRadius = 20
+        container.layer?.shadowOffset = NSSize(width: 0, height: 8)
+        container.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        container.autoresizingMask = [.width, .height]
+
+        // Visual effect view inside container (clipped to corners)
         let effectView = NSVisualEffectView()
         effectView.material = .hudWindow
         effectView.blendingMode = .behindWindow
@@ -103,15 +114,9 @@ final class ToastPanel: NSPanel {
         effectView.layer?.masksToBounds = true
         effectView.layer?.borderWidth = 1
         effectView.layer?.borderColor = NSColor(white: 1.0, alpha: 0.12).cgColor
-        effectView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
+        effectView.frame = container.bounds
         effectView.autoresizingMask = [.width, .height]
-        self.visualEffectView = effectView
-
-        // Shadow on the visual effect view layer (not the panel)
-        effectView.layer?.shadowColor = NSColor.black.cgColor
-        effectView.layer?.shadowOpacity = 0.45
-        effectView.layer?.shadowRadius = 20
-        effectView.layer?.shadowOffset = NSSize(width: 0, height: 8)
+        container.addSubview(effectView)
 
         // Hosting view for SwiftUI content
         let hosting = NSHostingView(rootView: ToastPanelContent())
@@ -119,7 +124,7 @@ final class ToastPanel: NSPanel {
         hosting.autoresizingMask = [.width, .height]
         effectView.addSubview(hosting)
 
-        self.contentView = effectView
+        self.contentView = container
     }
 
     func positionAtBottomCenter() {

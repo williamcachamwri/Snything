@@ -55,6 +55,25 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         return count
     }
 
+    // MARK: - On-demand OCR for search results
+
+    /// OCR a single image on-demand (for search results not yet indexed)
+    func ocrImageOnDemand(path: String) async -> String? {
+        // Check if already indexed
+        var existing: String?
+        lockQueue.sync { existing = index[path] }
+        if let existing = existing, !existing.isEmpty {
+            return existing
+        }
+
+        let text = await performOCR(path: path)
+        if !text.isEmpty {
+            lockQueue.sync { index[path] = text }
+            saveIndex()
+        }
+        return text.isEmpty ? nil : text
+    }
+
     // MARK: - Indexing
 
     func startBackgroundIndex(for scopes: [String]) {
@@ -63,15 +82,13 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             print("[OCR] Starting background image discovery...")
             let imagePaths = await self.discoverImagesViaMdfind(scopes: scopes)
-            print("[OCR] Found \(imagePaths.count) images to index")
+            print("[OCR] Found \(imagePaths.count) images to index (sorted by recency)")
             await self.buildIndex(for: imagePaths)
         }
     }
 
-    /// Use mdfind -onlyin to discover images in search scopes.
-    /// Uses Spotlight's pre-built index for instant results.
-    /// Returns up to maxImages total, sorted by recency (most recent first).
-    private func discoverImagesViaMdfind(scopes: [String], maxImages: Int = 2000) async -> [String] {
+    /// Use mdfind -onlyin to discover images, then sort by modified date (most recent first).
+    private func discoverImagesViaMdfind(scopes: [String], maxImages: Int = 5000) async -> [String] {
         let fm = FileManager.default
         let imageUTIs = [
             "public.png", "public.jpeg", "public.tiff", "public.gif",
@@ -80,15 +97,17 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         let typePred = imageUTIs.map { "kMDItemContentType == '\($0)'" }.joined(separator: " || ")
 
         var allPaths: [String] = []
-        allPaths.reserveCapacity(maxImages)
+        allPaths.reserveCapacity(maxImages * 2)
 
         for scope in scopes {
             guard !Task.isCancelled else { break }
 
-            // Resolve relative paths (e.g. "Library")
             let resolved: String
             if scope.hasPrefix("/") {
                 resolved = scope
+            } else if scope == "Library" {
+                // Special case: resolve to user's Library
+                resolved = NSHomeDirectory() + "/Library"
             } else {
                 resolved = fm.currentDirectoryPath + "/" + scope
             }
@@ -105,16 +124,10 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
             process.standardOutput = pipe
             process.standardError = FileHandle.nullDevice
 
-            do {
-                try process.run()
-            } catch {
-                print("[OCR] mdfind failed for '\(resolved)': \(error)")
-                continue
-            }
+            do { try process.run() } catch { continue }
 
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
-
             guard !Task.isCancelled else { return [] }
 
             let paths = String(data: data, encoding: .utf8)?
@@ -125,18 +138,25 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
             allPaths.append(contentsOf: paths)
         }
 
+        // Sort by modified date (most recent first) so new screenshots are indexed first
+        let sorted = allPaths.sorted { a, b in
+            let da = (try? fm.attributesOfItem(atPath: a)[.modificationDate] as? Date) ?? .distantPast
+            let db = (try? fm.attributesOfItem(atPath: b)[.modificationDate] as? Date) ?? .distantPast
+            return da > db
+        }
+
         // Deduplicate and limit
         var seen = Set<String>()
         var unique: [String] = []
-        unique.reserveCapacity(min(allPaths.count, maxImages))
-        for path in allPaths {
+        unique.reserveCapacity(min(sorted.count, maxImages))
+        for path in sorted {
             if seen.insert(path).inserted {
                 unique.append(path)
                 if unique.count >= maxImages { break }
             }
         }
 
-        print("[OCR] Total unique images to index: \(unique.count)")
+        print("[OCR] Total unique images to index (most recent first): \(unique.count)")
         return unique
     }
 
@@ -163,7 +183,6 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
             localCount += 1
             await MainActor.run { indexedCount = localCount }
 
-            // Save incremental progress every 50 images
             if localCount % 50 == 0 {
                 saveIndex()
                 print("[OCR] Indexed \(localCount)/\(imagePaths.count) images")
@@ -171,10 +190,8 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         }
 
         saveIndex()
-
         await MainActor.run { indexedCount = localCount }
         print("[OCR] Done. Indexed \(localCount) images. Total in store: \(indexCount)")
-
         await MainActor.run { isIndexing = false }
     }
 
@@ -182,9 +199,7 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         let url = URL(fileURLWithPath: path)
         guard let nsImage = NSImage(contentsOf: url),
               let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        else {
-            return ""
-        }
+        else { return "" }
 
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .fast
@@ -192,12 +207,7 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         request.recognitionLanguages = ["en", "vi", "zh-Hans", "ja", "ko"]
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-
-        do {
-            try handler.perform([request])
-        } catch {
-            return ""
-        }
+        do { try handler.perform([request]) } catch { return "" }
 
         guard let observations = request.results else { return "" }
         let texts = observations.compactMap { $0.topCandidates(1).first?.string }
@@ -218,9 +228,7 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         guard let data = UserDefaults.standard.data(forKey: storageKey),
               let entries = try? JSONDecoder().decode([OCRIndexEntry].self, from: data) else { return }
         lockQueue.sync {
-            for entry in entries {
-                index[entry.path] = entry.text
-            }
+            for entry in entries { index[entry.path] = entry.text }
         }
         print("[OCR] Loaded \(entries.count) entries from cache")
     }
