@@ -1,13 +1,16 @@
-name: Build & Release
+name: Auto Release on Push
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    branches:
+      - main
+    paths-ignore:
+      - 'appcast.xml'
+      - '.github/workflows/**'
+      - 'README.md'
 
 jobs:
-  build:
+  auto-bump:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -16,11 +19,50 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Swift
         uses: swift-actions/setup-swift@v2
         with:
           swift-version: '6.0'
+
+      - name: Auto bump version
+        id: bump
+        run: |
+          # Fetch latest release
+          LATEST=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python3 -c "import sys,json; t=json.load(sys.stdin).get('tag_name','v1.0.0'); print(t.lstrip('v'))")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
+          PATCH=$((PATCH + 1))
+          if [ "$PATCH" -gt 100 ]; then
+            PATCH=0
+            MINOR=$((MINOR + 1))
+          fi
+          if [ "$MINOR" -gt 20 ]; then
+            MINOR=0
+            MAJOR=$((MAJOR + 1))
+          fi
+          NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "new_version=$NEW" >> $GITHUB_OUTPUT
+          echo "new_tag=v$NEW" >> $GITHUB_OUTPUT
+          echo "Bumped: $LATEST -> $NEW"
+
+      - name: Update build_app.sh version
+        run: |
+          NEW=${{ steps.bump.outputs.new_version }}
+          sed -i.bak "s/APP_VERSION=\"\${APP_VERSION:-[^\"]*}\"/APP_VERSION=\"\${APP_VERSION:-$NEW}\"/" .github/build_app.sh
+          rm -f .github/build_app.sh.bak
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/build_app.sh
+          git diff --cached --quiet || git commit -m "chore: auto-bump version to ${{ steps.bump.outputs.new_version }}"
+
+      - name: Create Tag
+        run: |
+          git tag ${{ steps.bump.outputs.new_tag }}
+          git push origin HEAD:main --tags
 
       - name: Resolve dependencies
         run: swift package resolve
@@ -28,14 +70,13 @@ jobs:
       - name: Build .app bundle
         run: bash .github/build_app.sh
         env:
-          APP_VERSION: ${{ github.ref_name }}
+          APP_VERSION: ${{ steps.bump.outputs.new_version }}
 
       - name: Create DMG
         run: |
           brew install create-dmg || true
           create-dmg \
             --volname "Snything Installer" \
-            --window-pos 200 120 \
             --window-size 600 400 \
             --icon-size 100 \
             --app-drop-link 450 185 \
@@ -43,55 +84,28 @@ jobs:
             --hide-extension "Snything.app" \
             "Snything-Release.dmg" \
             ".build/Snything.app" || true
-
-          # Fallback if create-dmg fails
           if [ ! -f "Snything-Release.dmg" ]; then
             hdiutil create -srcfolder ".build/Snything.app" -volname "Snything" -fs HFS+ -format UDZO "Snything-Release.dmg"
-          fi
-
-      - name: Generate Sparkle signature
-        id: sign
-        run: |
-          SPARKLE_BIN=$(find .build -name "sign_update" -type f | head -1)
-          if [ -n "$SPARKLE_BIN" ] && [ -f "$SPARKLE_BIN" ]; then
-            SIGNATURE=$($SPARKLE_BIN "Snything-Release.dmg" 2>/dev/null || echo "")
-            if [ -n "$SIGNATURE" ]; then
-              echo "signature=$SIGNATURE" >> $GITHUB_OUTPUT
-              echo "has_signature=true" >> $GITHUB_OUTPUT
-            else
-              echo "has_signature=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            echo "has_signature=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.bump.outputs.new_tag }}
+          name: "version ${{ steps.bump.outputs.new_version }}"
           files: Snything-Release.dmg
           generate_release_notes: true
 
       - name: Update appcast.xml
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
+          VERSION=${{ steps.bump.outputs.new_version }}
           PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
 
-          # Fetch release notes
           RELEASE_NOTES=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python3 -c "import sys,json; b=json.load(sys.stdin).get('body',''); print(b[:2000] if b else '')")
           if [ -z "$RELEASE_NOTES" ]; then
             RELEASE_NOTES="<ul><li>Bug fixes and improvements.</li></ul>"
           fi
 
-          SIGNATURE="${{ steps.sign.outputs.signature }}"
-          HAS_SIG="${{ steps.sign.outputs.has_signature }}"
-
-          if [ "$HAS_SIG" = "true" ] && [ -n "$SIGNATURE" ]; then
-            SIG_ATTR=" sparkle:edSignature=\"$SIGNATURE\""
-          else
-            SIG_ATTR=""
-          fi
-
-          # Generate new item
           cat > /tmp/new_item.xml << EOF
               <item>
                 <title>Version $VERSION</title>
@@ -100,21 +114,16 @@ jobs:
                   $RELEASE_NOTES
                 ]]></description>
                 <pubDate>$PUB_DATE</pubDate>
-                <enclosure url="https://github.com/${{ github.repository }}/releases/download/v$VERSION/Snything-Release.dmg" sparkle:version="${VERSION##*.}" sparkle:shortVersionString="$VERSION" length="0" type="application/octet-stream"$SIG_ATTR/>
+                <enclosure url="https://github.com/${{ github.repository }}/releases/download/v$VERSION/Snything-Release.dmg" sparkle:version="${VERSION##*.}" sparkle:shortVersionString="$VERSION" length="0" type="application/octet-stream" sparkle:edSignature=""/>
                 <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
               </item>
           EOF
 
-          # Insert into appcast.xml
           python3 << 'PYEOF'
-          import re
-
           with open("appcast.xml", "r") as f:
               content = f.read()
-
           with open("/tmp/new_item.xml", "r") as f:
               new_item = f.read()
-
           marker = "<language>en</language>"
           if marker in content:
               content = content.replace(marker, marker + "\n" + new_item, 1)
@@ -126,9 +135,9 @@ jobs:
               exit(1)
           PYEOF
 
-      - name: Commit updated appcast.xml
+      - name: Commit appcast.xml
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add appcast.xml
-          git diff --cached --quiet || (git commit -m "chore: update appcast.xml for $GITHUB_REF_NAME" && git push origin HEAD:main)
+          git diff --cached --quiet || (git commit -m "chore: update appcast.xml for ${{ steps.bump.outputs.new_tag }}" && git push origin HEAD:main)
