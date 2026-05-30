@@ -330,6 +330,36 @@ struct HotkeySettingsView: View {
                     applyPreset(cmd: false, shift: false, opt: false, ctrl: true, key: 49)
                 }
             }
+
+            Divider()
+                .background(Color.white.opacity(0.06))
+                .padding(.vertical, 4)
+
+            Text("Tab Shortcuts")
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+
+            TabShortcutRow(
+                icon: "magnifyingglass",
+                title: "Files",
+                subtitle: "Switch to Files / Recents",
+                options: tabKeyOptions,
+                selection: $settings.tabShortcutFiles
+            )
+            TabShortcutRow(
+                icon: "square.grid.2x2",
+                title: "Applications",
+                subtitle: "Switch to Applications",
+                options: tabKeyOptions,
+                selection: $settings.tabShortcutApplications
+            )
+            TabShortcutRow(
+                icon: "doc.on.clipboard",
+                title: "Clipboard",
+                subtitle: "Switch to Clipboard History",
+                options: tabKeyOptions,
+                selection: $settings.tabShortcutClipboard
+            )
         }
     }
 
@@ -340,6 +370,20 @@ struct HotkeySettingsView: View {
         settings.hotkeyCtrl = ctrl
         settings.hotkeyKeyCode = key
         NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
+    }
+
+    private var tabKeyOptions: [(code: Int, label: String)] {
+        [
+            (0, "A"), (11, "B"), (8, "C"), (2, "D"), (14, "E"),
+            (3, "F"), (5, "G"), (4, "H"), (34, "I"), (38, "J"),
+            (40, "K"), (37, "L"), (46, "M"), (42, "N"), (31, "O"),
+            (35, "P"), (12, "Q"), (15, "R"), (1, "S"), (17, "T"),
+            (32, "U"), (9, "V"), (13, "W"), (7, "X"), (16, "Y"),
+            (6, "Z"),
+            (122, "F1"), (120, "F2"), (99, "F3"), (118, "F4"),
+            (96, "F5"), (97, "F6"), (98, "F7"), (100, "F8"),
+            (101, "F9"), (109, "F10"), (103, "F11"), (111, "F12")
+        ]
     }
 
     private var hotkeyDisplay: String {
@@ -371,6 +415,84 @@ struct PresetButton: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct TabShortcutRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    let options: [(code: Int, label: String)]
+    @Binding var selection: Int
+    @State private var isOpen = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.7))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.system(size: 11, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+
+            Spacer()
+
+            Menu {
+                ForEach(options, id: \.code) { opt in
+                    Button {
+                        withAnimation(.easeOut(duration: 0.1)) {
+                            selection = opt.code
+                        }
+                    } label: {
+                        HStack {
+                            Text(opt.label)
+                            if selection == opt.code {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "command")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(.secondary.opacity(0.6))
+                    Text("+")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text(currentLabel)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .frame(minWidth: 24)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.secondary.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                )
+            }
+            .menuStyle(.borderlessButton)
+            .frame(width: 72)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 2)
+    }
+
+    private var currentLabel: String {
+        options.first(where: { $0.code == selection })?.label ?? "?"
     }
 }
 

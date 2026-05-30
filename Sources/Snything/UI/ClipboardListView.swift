@@ -11,7 +11,8 @@ struct ClipboardListView: View {
                     ForEach(Array(coordinator.clipboardItems.enumerated()), id: \.element.id) { index, item in
                         ClipboardRowView(
                             item: item,
-                            isSelected: index == coordinator.selectedClipboardIndex
+                            isSelected: index == coordinator.selectedClipboardIndex,
+                            isDeleting: coordinator.deletingClipboardID == item.id
                         )
                         .id(item.id)
                         .contentShape(Rectangle())
@@ -52,6 +53,7 @@ struct ClipboardListView: View {
 struct ClipboardRowView: View {
     let item: ClipboardItem
     let isSelected: Bool
+    let isDeleting: Bool
     private let iconSize: CGFloat = 32
 
     @State private var appIcon: NSImage? = nil
@@ -74,7 +76,7 @@ struct ClipboardRowView: View {
                 } else {
                     Image(systemName: iconName)
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(iconColor)
+                        .foregroundColor(isDeleting ? .red.opacity(0.7) : iconColor)
                 }
             }
             .frame(width: iconSize, height: iconSize)
@@ -86,31 +88,33 @@ struct ClipboardRowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(item.displayTitle)
                     .font(.system(size: 14, weight: isSelected ? .semibold : .medium, design: .rounded))
-                    .foregroundColor(.primary)
+                    .foregroundColor(isDeleting ? .red.opacity(0.8) : .primary)
                     .lineLimit(1)
 
                 Text(item.displaySubtitle)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(isDeleting ? .red.opacity(0.5) : .secondary.opacity(0.8))
                     .lineLimit(1)
             }
 
             Spacer()
 
             // Type badge
-            Text(item.type.rawValue.uppercased())
-                .font(.system(size: 9, weight: .bold, design: .rounded))
-                .foregroundColor(typeBadgeColor.opacity(0.9))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(typeBadgeColor.opacity(0.12))
-                )
+            if !isDeleting {
+                Text(item.type.rawValue.uppercased())
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .foregroundColor(typeBadgeColor.opacity(0.9))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(typeBadgeColor.opacity(0.12))
+                    )
+            }
 
-            if isSelected {
+            if isSelected && !isDeleting {
                 HStack(spacing: 6) {
-                    ActionBadge(icon: "delete.left", label: "Delete")
+                    ActionBadge(icon: "delete.left", label: "Delete", color: .red)
                     ActionBadge(icon: "return", label: "Paste")
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -120,28 +124,37 @@ struct ClipboardRowView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                .fill(backgroundFill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(
-                            isSelected
+                            isDeleting
                                 ? AnyShapeStyle(LinearGradient(
                                     gradient: Gradient(colors: [
-                                        Color.accentColor.opacity(0.45),
-                                        Color.accentColor.opacity(0.15)
+                                        Color.red.opacity(0.6),
+                                        Color.red.opacity(0.2)
                                     ]),
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                   ))
-                                : AnyShapeStyle(Color.clear),
+                                : (isSelected
+                                    ? AnyShapeStyle(LinearGradient(
+                                        gradient: Gradient(colors: [
+                                            Color.accentColor.opacity(0.45),
+                                            Color.accentColor.opacity(0.15)
+                                        ]),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                      ))
+                                    : AnyShapeStyle(Color.clear)),
                             lineWidth: 1
                         )
                 )
                 .shadow(
-                    color: isSelected ? Color.accentColor.opacity(0.15) : Color.clear,
-                    radius: isSelected ? 8 : 0,
+                    color: isDeleting ? Color.red.opacity(0.25) : (isSelected ? Color.accentColor.opacity(0.15) : Color.clear),
+                    radius: (isSelected || isDeleting) ? 8 : 0,
                     x: 0,
-                    y: isSelected ? 2 : 0
+                    y: (isSelected || isDeleting) ? 2 : 0
                 )
                 .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
         )
@@ -150,6 +163,17 @@ struct ClipboardRowView: View {
             loadThumbnail()
             loadIcon()
         }
+        .offset(x: isDeleting ? 60 : 0)
+        .scaleEffect(isDeleting ? 0.92 : 1.0)
+        .opacity(isDeleting ? 0.3 : 1.0)
+        .rotationEffect(.degrees(isDeleting ? 2 : 0))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isDeleting)
+    }
+
+    private var backgroundFill: Color {
+        if isDeleting { return Color.red.opacity(0.12) }
+        if isSelected { return Color.accentColor.opacity(0.14) }
+        return Color.clear
     }
 
     private func loadThumbnail() {

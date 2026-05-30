@@ -32,6 +32,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var clipboardPreviewItem: ClipboardItem? = nil
 
     @Published var deletingResultID: String? = nil
+    @Published var deletingClipboardID: String? = nil
     @Published var shouldAutoScroll: Bool = false
 
     private let engine = FastSearchEngine.shared
@@ -284,12 +285,20 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func deleteSelectedClipboardItem() {
         guard showingClipboard, clipboardItems.indices.contains(selectedClipboardIndex) else { return }
         let item = clipboardItems[selectedClipboardIndex]
-        clipboard.deleteItem(item)
-        clipboardItems = clipboard.items
-        if selectedClipboardIndex >= clipboardItems.count {
-            selectedClipboardIndex = max(0, clipboardItems.count - 1)
+
+        deletingClipboardID = item.id
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                self.deletingClipboardID = nil
+                self.clipboard.deleteItem(item)
+                self.clipboardItems = self.clipboard.items
+                if self.selectedClipboardIndex >= self.clipboardItems.count {
+                    self.selectedClipboardIndex = max(0, self.clipboardItems.count - 1)
+                }
+                self.clipboardFocusedIndex = self.selectedClipboardIndex
+            }
         }
-        clipboardFocusedIndex = selectedClipboardIndex
     }
 
     func deleteSelectedFile() {

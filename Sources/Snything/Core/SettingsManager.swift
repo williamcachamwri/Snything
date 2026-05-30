@@ -45,6 +45,17 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         didSet { objectWillChange.send() }
     }
 
+    // Tab shortcut key codes (with Cmd modifier)
+    @AppStorage("snything.tabShortcutFiles") var tabShortcutFiles: Int = 3 { // F
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.tabShortcutApplications") var tabShortcutApplications: Int = 0 { // A
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.tabShortcutClipboard") var tabShortcutClipboard: Int = 8 { // C
+        didSet { objectWillChange.send() }
+    }
+
     var hotkeyModifiersUInt32: UInt32 {
         var mods: UInt32 = 0
         if hotkeyCmd { mods |= UInt32(cmdKey) }
