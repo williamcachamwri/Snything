@@ -11,7 +11,7 @@ BUNDLE_ID="com.snything.mac"
 BUILD_DIR="${PROJECT_ROOT}/.build"
 RELEASE_BIN="${BUILD_DIR}/release/${APP_NAME}"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
-APP_VERSION="${APP_VERSION:-1.0.0}"
+APP_VERSION="${APP_VERSION:-1.0.89}"
 
 echo "Building release binary..."
 swift build -c release
