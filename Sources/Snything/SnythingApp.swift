@@ -216,7 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func checkForUpdates() {
-        UpdateManager.shared.checkForUpdates(showAnyway: true)
+        UpdateManager.shared.checkForUpdates()
     }
 
     // MARK: - NSWindowDelegate (Settings)

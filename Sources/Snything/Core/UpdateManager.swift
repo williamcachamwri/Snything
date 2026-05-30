@@ -8,8 +8,12 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published var isChecking = false
     @Published var statusMessage: String?
 
-    private var updaterController: SPUStandardUpdaterController!
+    private(set) var controller: SPUStandardUpdaterController!
     private var isStarted = false
+
+    var updater: SPUUpdater {
+        controller.updater
+    }
 
     private override init() {
         super.init()
@@ -23,23 +27,17 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
             return
         }
 
-        updaterController = SPUStandardUpdaterController(
-            startingUpdater: false,
+        controller = SPUStandardUpdaterController(
+            startingUpdater: true,
             updaterDelegate: self,
             userDriverDelegate: nil
         )
 
-        updaterController.updater.automaticallyChecksForUpdates = false
-        updaterController.updater.automaticallyDownloadsUpdates = false
+        controller.updater.automaticallyChecksForUpdates = false
+        controller.updater.automaticallyDownloadsUpdates = false
 
-        do {
-            try updaterController.startUpdater()
-            isStarted = true
-            print("[Sparkle] Updater started successfully")
-        } catch {
-            print("[Sparkle] Failed to start updater: \(error)")
-            isStarted = false
-        }
+        print("[Sparkle] Updater initialized")
+        isStarted = true
     }
 
     // MARK: - Public API
@@ -49,19 +47,16 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
             print("[Sparkle] Updater not started — skipping automatic checks")
             return
         }
-        updaterController.updater.automaticallyChecksForUpdates = SettingsManager.shared.autoCheckUpdates
-        updaterController.updater.updateCheckInterval = 24 * 60 * 60
+        controller.updater.automaticallyChecksForUpdates = SettingsManager.shared.autoCheckUpdates
+        controller.updater.updateCheckInterval = 24 * 60 * 60
     }
 
     /// Check for updates. Sparkle shows its own native UI.
-    func checkForUpdates(showAnyway: Bool = false) {
-        guard !isChecking else { return }
-
+    func checkForUpdates() {
         guard isStarted else {
-            // In debug mode (swift run), show native alert instead of custom window
             let alert = NSAlert()
             alert.messageText = "Updates Unavailable"
-            alert.informativeText = "Automatic updates require a signed .app bundle.\n\nBuild with `.github/build_app.sh` and install to /Applications/ to enable Sparkle updates."
+            alert.informativeText = "Automatic updates require a signed .app bundle installed to /Applications/.\n\nBuild with `.github/build_app.sh` to enable Sparkle updates."
             alert.alertStyle = .informational
             alert.addButton(withTitle: "OK")
             alert.runModal()
@@ -70,75 +65,59 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
 
         isChecking = true
         statusMessage = nil
-        updaterController.checkForUpdates(nil)
+        controller.checkForUpdates(nil)
     }
 
     func installUpdate() {
         guard isStarted else { return }
-        updaterController.checkForUpdates(nil)
-    }
-
-    func skipUpdate() {
-        // Sparkle manages skip logic internally
+        controller.checkForUpdates(nil)
     }
 
     // MARK: - SPUUpdaterDelegate
 
-    func feedURLString(for updater: SPUUpdater) -> String? {
-        VersionManager.shared.appcastURL.absoluteString
+    func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
+        let count = appcast.items.count
+        print("[Sparkle] Appcast loaded: \(count) item(s)")
     }
 
-    func updater(
-        _ updater: SPUUpdater,
-        mayPerform updateCheck: SPUUpdateCheck
-    ) throws -> Bool {
-        true
+    func updater(_ updater: SPUUpdater, didFindValidUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString ?? "?"
+        let build = item.versionString ?? "?"
+        print("[Sparkle] Update available: v\(version) (build \(build))")
+        statusMessage = "Update available: v\(version)"
     }
 
-    func updater(
-        _ updater: SPUUpdater,
-        didFindValidUpdate item: SUAppcastItem
-    ) {
-        DispatchQueue.main.async { [weak self] in
-            self?.statusMessage = "Update available: v\(item.displayVersionString)"
-            // Sparkle's SPUStandardUserDriver handles the UI automatically
+    func updaterDidNotFindUpdate(_ updater: SPUUpdater, error: any Error) {
+        let nsError = error as NSError
+        print("[Sparkle] No update found: \(nsError.localizedDescription) [code=\(nsError.code), domain=\(nsError.domain)]")
+        if nsError.domain == "SPUErrorDomain" && nsError.code == 1001 {
+            statusMessage = "You're on the latest version."
+        } else {
+            statusMessage = "Update check failed: \(nsError.localizedDescription)"
         }
-    }
-
-    func updater(
-        _ updater: SPUUpdater,
-        didNotFindUpdate error: Error
-    ) {
-        DispatchQueue.main.async { [weak self] in
-            let nsError = error as NSError
-            print("[Sparkle] didNotFindUpdate: domain=\(nsError.domain) code=\(nsError.code)")
-            if nsError.domain == "SPUErrorDomain" && nsError.code == 1001 {
-                self?.statusMessage = "You're on the latest version."
-            } else {
-                self?.statusMessage = "Update check failed: \(error.localizedDescription)"
-            }
-            self?.isChecking = false
-        }
-    }
-
-    func updater(
-        _ updater: SPUUpdater,
-        failedToDownloadUpdate item: SUAppcastItem,
-        error: Error
-    ) {
-        print("[Sparkle] failedToDownloadUpdate: \(error)")
-        statusMessage = "Download failed: \(error.localizedDescription)"
         isChecking = false
     }
 
-    func updater(
-        _ updater: SPUUpdater,
-        willInstallUpdate item: SUAppcastItem
-    ) {
-        statusMessage = "Installing v\(item.displayVersionString)..."
+    func updater(_ updater: SPUUpdater, didDownloadUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString ?? "?"
+        print("[Sparkle] Downloaded update: v\(version)")
+    }
+
+    func updater(_ updater: SPUUpdater, willInstallUpdate item: SUAppcastItem) {
+        let version = item.displayVersionString ?? "?"
+        print("[Sparkle] Installing update: v\(version)")
+        statusMessage = "Installing v\(version)..."
     }
 
     func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
+        print("[Sparkle] Relaunching application...")
         statusMessage = "Relaunching..."
+    }
+
+    func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
+        let nsError = error as NSError
+        print("[Sparkle] Update aborted: \(nsError.localizedDescription) [code=\(nsError.code), domain=\(nsError.domain)]")
+        statusMessage = "Update aborted: \(nsError.localizedDescription)"
+        isChecking = false
     }
 }
