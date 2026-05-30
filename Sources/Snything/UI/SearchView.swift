@@ -49,6 +49,14 @@ struct SearchView: View {
             setupKeyboardMonitor()
             coordinator.showRecents()
             startRecentsTimer()
+            // Listen for global hotkey chord trigger when window is visible
+            NotificationCenter.default.addObserver(
+                forName: .snythingChordTriggered,
+                object: nil,
+                queue: .main
+            ) { [weak coordinator] _ in
+                coordinator?.enterChordMode()
+            }
         }
         .onDisappear {
             coordinator.cancel()
@@ -227,6 +235,12 @@ struct SearchView: View {
         KeyboardManager.shared.onKeyDown = { [weak coordinator] event in
             guard let coordinator = coordinator else { return false }
 
+            // Chord mode: any key resolves the chord
+            if coordinator.chordModeActive {
+                coordinator.resolveChord(keyCode: Int(event.keyCode))
+                return true
+            }
+
             switch event.keyCode {
             case 123: // left arrow
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
@@ -276,6 +290,10 @@ struct SearchView: View {
                 }
                 return true
             case 53: // escape
+                if coordinator.chordModeActive {
+                    coordinator.cancelChord()
+                    return true
+                }
                 if coordinator.showPreview {
                     withAnimation(.easeOut(duration: 0.15)) {
                         coordinator.showPreview = false
@@ -291,31 +309,31 @@ struct SearchView: View {
                 let settings = SettingsManager.shared
                 let code = Int(event.keyCode)
                 if event.modifierFlags.contains(.command) {
-                    if code == settings.tabShortcutFiles {
-                        if coordinator.showingApplications || coordinator.showingClipboard {
-                            query = ""
-                            stopClipboardTimer()
-                            coordinator.showRecents()
-                            startRecentsTimer()
+                    // Ignore bare modifier-only keys
+                    let isBareModifier = code == 54 || code == 55 || code == 56 || code == 58 ||
+                                         code == 59 || code == 60 || code == 61 || code == 62
+                    if !isBareModifier {
+                        if code == settings.tabShortcutFiles {
+                            coordinator.enterChordMode()
+                            return true
+                        } else if code == settings.tabShortcutApplications {
+                            if !coordinator.showingApplications {
+                                self.query = ""
+                                self.stopRecentsTimer()
+                                self.stopClipboardTimer()
+                                coordinator.showApplications()
+                                coordinator.performSearch(query: "")
+                            }
+                            return true
+                        } else if code == settings.tabShortcutClipboard {
+                            if !coordinator.showingClipboard {
+                                self.query = ""
+                                self.stopRecentsTimer()
+                                coordinator.showClipboardHistory()
+                                self.startClipboardTimer()
+                            }
+                            return true
                         }
-                        return true
-                    } else if code == settings.tabShortcutApplications {
-                        if !coordinator.showingApplications {
-                            query = ""
-                            stopRecentsTimer()
-                            stopClipboardTimer()
-                            coordinator.showApplications()
-                            coordinator.performSearch(query: "")
-                        }
-                        return true
-                    } else if code == settings.tabShortcutClipboard {
-                        if !coordinator.showingClipboard {
-                            query = ""
-                            stopRecentsTimer()
-                            coordinator.showClipboardHistory()
-                            startClipboardTimer()
-                        }
-                        return true
                     }
                 }
                 if !self.isSearchFocused && event.characters?.count == 1 {

@@ -13,7 +13,7 @@ struct SnythingApp: App {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var onboardingWindow: NSWindow?
     private var onboardingBackdrop: NSWindow?
     private var searchWindowController: SearchWindowController?
@@ -103,7 +103,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func handleReRegisterHotkey() {
         GlobalHotkeyManager.shared.unregister()
         GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
-            self?.searchWindowController?.toggleVisibility()
+            guard let self = self else { return }
+            // If window is visible, treat global hotkey as chord entry (don't toggle)
+            if self.searchWindowController?.window?.isVisible == true {
+                NotificationCenter.default.post(name: .snythingChordTriggered, object: nil)
+            } else {
+                self.searchWindowController?.toggleVisibility()
+            }
         }
     }
 
@@ -199,11 +205,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
+        // Hide search and unregister hotkey to avoid capture conflicts
+        searchWindowController?.hideWindow()
+        GlobalHotkeyManager.shared.unregister()
+
         let window = createHostingWindow(
             rootView: SettingsView(),
             size: NSSize(width: 480, height: 420),
             level: .modalPanel
         )
+        window.delegate = self
         self.settingsWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -211,6 +222,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkForUpdates() {
         UpdateManager.shared.checkForUpdates(showAnyway: true)
+    }
+
+    // MARK: - NSWindowDelegate (Settings)
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window == settingsWindow else { return }
+        settingsWindow = nil
+        // Re-register global hotkey after settings closes
+        GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
+            guard let self = self else { return }
+            if self.searchWindowController?.window?.isVisible == true {
+                NotificationCenter.default.post(name: .snythingChordTriggered, object: nil)
+            } else {
+                self.searchWindowController?.toggleVisibility()
+            }
+        }
     }
 
     @objc private func grantFolderAccess() {
@@ -297,7 +324,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         searchWindowController?.showWindow(nil)
 
         GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
-            self?.searchWindowController?.toggleVisibility()
+            guard let self = self else { return }
+            if self.searchWindowController?.window?.isVisible == true {
+                NotificationCenter.default.post(name: .snythingChordTriggered, object: nil)
+            } else {
+                self.searchWindowController?.toggleVisibility()
+            }
         }
     }
 
@@ -355,4 +387,5 @@ extension Notification.Name {
     static let snythingHideWindow = Notification.Name("snythingHideWindow")
     static let snythingReRegisterHotkey = Notification.Name("snythingReRegisterHotkey")
     static let snythingResetToFiles = Notification.Name("snythingResetToFiles")
+    static let snythingChordTriggered = Notification.Name("snythingChordTriggered")
 }

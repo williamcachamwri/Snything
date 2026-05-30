@@ -34,8 +34,10 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var deletingResultID: String? = nil
     @Published var deletingClipboardID: String? = nil
     @Published var shouldAutoScroll: Bool = false
+    @Published var chordModeActive: Bool = false
 
     private let engine = FastSearchEngine.shared
+    private var chordTimer: Timer?
     private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
     private let fm = FileManager.default
@@ -326,6 +328,54 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             } catch {
                 print("[SearchCoordinator] failed to trash \(result.path): \(error)")
             }
+        }
+    }
+
+    // MARK: - Chord Shortcuts
+
+    func enterChordMode() {
+        if chordModeActive {
+            // Already in chord mode → resolve to Files
+            resolveChord(keyCode: SettingsManager.shared.tabShortcutFiles)
+            return
+        }
+        chordModeActive = true
+        chordTimer?.invalidate()
+        chordTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            self?.chordModeActive = false
+        }
+    }
+
+    func cancelChord() {
+        chordModeActive = false
+        chordTimer?.invalidate()
+        chordTimer = nil
+    }
+
+    func resolveChord(keyCode: Int) {
+        let settings = SettingsManager.shared
+        chordModeActive = false
+        chordTimer?.invalidate()
+        chordTimer = nil
+
+        if keyCode == settings.tabShortcutFiles {
+            if showingApplications || showingClipboard {
+                showRecents()
+            }
+            return
+        }
+        if keyCode == settings.tabShortcutApplications {
+            if !showingApplications {
+                showApplications()
+                performSearch(query: "")
+            }
+            return
+        }
+        if keyCode == settings.tabShortcutClipboard {
+            if !showingClipboard {
+                showClipboardHistory()
+            }
+            return
         }
     }
 

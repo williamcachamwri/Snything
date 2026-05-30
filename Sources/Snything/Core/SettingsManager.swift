@@ -45,8 +45,8 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         didSet { objectWillChange.send() }
     }
 
-    // Tab shortcut key codes (with Cmd modifier)
-    @AppStorage("snything.tabShortcutFiles") var tabShortcutFiles: Int = 3 { // F
+    // Tab shortcut chord keys (after Cmd+Space prefix)
+    @AppStorage("snything.tabShortcutFiles") var tabShortcutFiles: Int = 49 { // Space = chord trigger → Files
         didSet { objectWillChange.send() }
     }
     @AppStorage("snything.tabShortcutApplications") var tabShortcutApplications: Int = 0 { // A
