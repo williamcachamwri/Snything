@@ -869,11 +869,12 @@ struct ImagePreviewView: View {
                     }
                 }
 
-                // Zoom controls overlay
+                // Zoom controls overlay (bottom-right to avoid OCR button at top-right)
                 if scale > 1.0 || offset != .zero {
                     zoomControlBar
                         .padding(12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .padding(.bottom, 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
 
                 // OCR button
@@ -944,13 +945,41 @@ struct ImagePreviewView: View {
                         if scale > 1.1 {
                             scale = 1.0
                             offset = .zero
+                            lastScale = 1.0
+                            lastOffset = .zero
                         } else {
                             scale = 2.0
                             offset = .zero
+                            lastScale = 2.0
+                            lastOffset = .zero
                         }
                     }
                 }
-                .gesture(
+                // Trackpad pinch zoom (macOS)
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            let newScale = min(max(lastScale * value, minScale), maxScale)
+                            scale = newScale
+                            // Recenter offset when zooming so pinch center stays under finger
+                            offset = clampOffset(lastOffset, in: geo.size)
+                        }
+                        .onEnded { _ in
+                            lastScale = scale
+                            lastOffset = offset
+                            // Snap back if below min
+                            if scale < 1.05 {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    scale = 1.0
+                                    offset = .zero
+                                    lastScale = 1.0
+                                    lastOffset = .zero
+                                }
+                            }
+                        }
+                )
+                // Click-drag pan (when zoomed in)
+                .simultaneousGesture(
                     DragGesture()
                         .onChanged { value in
                             guard scale > 1.0 else { return }
