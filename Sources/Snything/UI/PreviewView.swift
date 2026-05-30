@@ -834,24 +834,85 @@ struct ImagePreviewView: View {
     @State private var nsImage: NSImage? = nil
     @State private var exif: EXIFData? = nil
     @State private var isLoading = true
+    @State private var ocrTexts: [OCRText] = []
+    @State private var showOCR = false
+    @State private var hoveredOCRID: UUID? = nil
+    @State private var showOCRPanel = false
+
+    private var allOCRText: String {
+        ocrTexts.map(\.text).joined(separator: "\n")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 Color.black.opacity(0.15)
-                if let nsImage {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .padding(12)
-                } else if !isLoading {
-                    VStack(spacing: 8) {
-                        Image(systemName: "photo")
-                            .font(.system(size: 32))
-                            .foregroundColor(.secondary.opacity(0.4))
-                        Text("Unable to load image")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+
+                GeometryReader { geo in
+                    ZStack {
+                        if let nsImage {
+                            Image(nsImage: nsImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .padding(12)
+                        } else if !isLoading {
+                            VStack(spacing: 8) {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(.secondary.opacity(0.4))
+                                Text("Unable to load image")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        if showOCR, let nsImage {
+                            ocrOverlay(imageSize: nsImage.size, containerSize: geo.size)
+                        }
+                    }
+                }
+
+                // OCR toggle button
+                if !ocrTexts.isEmpty {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 6) {
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.15)) {
+                                        showOCR.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: showOCR ? "text.viewfinder" : "text.viewfinder")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundColor(showOCR ? .accentColor : .white)
+                                        .padding(8)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.black.opacity(0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help(showOCR ? "Hide OCR" : "Show OCR text")
+
+                                Button {
+                                    showOCRPanel = true
+                                } label: {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundColor(.white)
+                                        .padding(8)
+                                        .background(
+                                            Circle()
+                                                .fill(Color.black.opacity(0.5))
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                                .help("Copy / select text")
+                            }
+                            .padding(12)
+                        }
+                        Spacer()
                     }
                 }
             }
@@ -870,9 +931,89 @@ struct ImagePreviewView: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
+        .sheet(isPresented: $showOCRPanel) {
+            OCRTextPanel(text: allOCRText)
+        }
         .task(id: url) {
             await loadImageAndExif()
+            await loadOCR()
         }
+    }
+
+    @ViewBuilder
+    private func ocrOverlay(imageSize: NSSize, containerSize: CGSize) -> some View {
+        let fitted = fittedImageRect(imageSize: imageSize, containerSize: containerSize, padding: 12)
+        ZStack {
+            ForEach(ocrTexts) { item in
+                let rect = convertBoundingBox(item.boundingBox, fittedRect: fitted)
+                ZStack(alignment: .topLeading) {
+                    Rectangle()
+                        .fill(hoveredOCRID == item.id ? Color.accentColor.opacity(0.25) : Color.yellow.opacity(0.15))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 2)
+                                .stroke(hoveredOCRID == item.id ? Color.accentColor : Color.yellow.opacity(0.6), lineWidth: 1)
+                        )
+
+                    if hoveredOCRID == item.id {
+                        Text(item.text)
+                            .font(.system(size: 10, weight: .medium, design: .rounded))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.7))
+                            .cornerRadius(3)
+                            .offset(y: -22)
+                    }
+                }
+                .frame(width: rect.width, height: rect.height)
+                .position(x: rect.midX, y: rect.midY)
+                .contentShape(Rectangle())
+                .onHover { hovering in
+                    hoveredOCRID = hovering ? item.id : nil
+                }
+                .onTapGesture {
+                    copyToClipboard(item.text)
+                }
+            }
+        }
+        .frame(width: fitted.width, height: fitted.height)
+        .position(x: containerSize.width / 2, y: containerSize.height / 2)
+    }
+
+    private func fittedImageRect(imageSize: NSSize, containerSize: CGSize, padding: CGFloat) -> CGRect {
+        let availW = containerSize.width - padding * 2
+        let availH = containerSize.height - padding * 2
+        let imgAspect = imageSize.width / imageSize.height
+        let containerAspect = availW / availH
+        if imgAspect > containerAspect {
+            let w = availW
+            let h = w / imgAspect
+            return CGRect(x: (containerSize.width - w) / 2,
+                          y: (containerSize.height - h) / 2,
+                          width: w, height: h)
+        } else {
+            let h = availH
+            let w = h * imgAspect
+            return CGRect(x: (containerSize.width - w) / 2,
+                          y: (containerSize.height - h) / 2,
+                          width: w, height: h)
+        }
+    }
+
+    private func convertBoundingBox(_ box: CGRect, fittedRect: CGRect) -> CGRect {
+        // Vision boundingBox: origin bottom-left, normalized [0,1]
+        // Convert to view coordinates: origin top-left
+        let x = fittedRect.minX + box.minX * fittedRect.width
+        let y = fittedRect.minY + (1.0 - box.maxY) * fittedRect.height
+        let w = box.width * fittedRect.width
+        let h = box.height * fittedRect.height
+        return CGRect(x: x, y: y, width: w, height: h)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
     }
 
     private func exifBar(data: EXIFData) -> some View {
@@ -931,6 +1072,55 @@ struct ImagePreviewView: View {
                 self.exif = exifData
             }
         }
+    }
+
+    private func loadOCR() async {
+        let texts = await ImageOCRService.recognizeText(in: url)
+        await MainActor.run {
+            withAnimation(.easeOut(duration: 0.25)) {
+                self.ocrTexts = texts
+            }
+        }
+    }
+}
+
+struct OCRTextPanel: View {
+    let text: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Recognized Text")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                Spacer()
+                Button("Copy All") {
+                    let pb = NSPasteboard.general
+                    pb.clearContents()
+                    pb.setString(text, forType: .string)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                Button("Done") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+            .padding()
+
+            Divider()
+
+            ScrollView {
+                Text(text)
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundColor(.primary)
+                    .textSelection(.enabled)
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .frame(minWidth: 400, minHeight: 300)
     }
 }
 
