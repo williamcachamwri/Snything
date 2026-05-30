@@ -424,6 +424,13 @@ final class FastSearchEngine: @unchecked Sendable {
         }
     }
 
+    func invalidateAppCache() {
+        appCacheLock.withLock {
+            appCacheLoaded = false
+            appCache.removeAll()
+        }
+    }
+
     private func scanApplications(query: String, maxResults: Int) async -> [SearchResult] {
         ensureAppCache()
         let cached = appCacheLock.withLock { appCache }

@@ -386,6 +386,13 @@ struct TreeNodeView: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(node.url.path, forType: .string)
             }
+            Button("Move to Trash") {
+                do {
+                    try FileManager.default.trashItem(at: node.url, resultingItemURL: nil)
+                } catch {
+                    print("[Preview] failed to trash \(node.url.path): \(error)")
+                }
+            }
         }
         .id(node.url)
     }

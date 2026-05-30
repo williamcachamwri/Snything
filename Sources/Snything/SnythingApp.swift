@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start hidden until onboarding decides
         NSApp.setActivationPolicy(.accessory)
         setupMenuBar()
+        FileSystemMonitor.shared.start()
 
         NotificationCenter.default.addObserver(
             self,
@@ -53,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         return false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        FileSystemMonitor.shared.stop()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
