@@ -36,6 +36,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     // Multi-selection state
     @Published var selectedIndices: Set<Int> = []
     @Published var lastAnchorIndex: Int? = nil
+    @Published var hoveredIndex: Int? = nil
     @Published var isKeyboardNavigating: Bool = false
 
     private let engine = FastSearchEngine.shared
@@ -69,6 +70,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func clearSelection() {
         selectedIndices.removeAll()
         lastAnchorIndex = nil
+        hoveredIndex = nil
     }
 
     func selectIndex(_ index: Int, shiftHeld: Bool = false) {
@@ -85,6 +87,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         }
         selectedIndex = index
         keyboardFocusedIndex = index
+        hoveredIndex = index
     }
 
     func toggleSelection(at index: Int) {
@@ -158,6 +161,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
                 self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
                 self.keyboardFocusedIndex = self.selectedIndex
                 self.selectedIndices.removeAll()
+                self.hoveredIndex = nil
             }
         }
 
@@ -181,6 +185,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             keyboardFocusedIndex = 0
             selectedIndices.removeAll()
             lastAnchorIndex = nil
+            hoveredIndex = nil
             isSearching = false
             showPreview = false
             previewResult = nil
@@ -196,6 +201,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             keyboardFocusedIndex = 0
             selectedIndices.removeAll()
             lastAnchorIndex = nil
+            hoveredIndex = nil
             isSearching = false
             showPreview = false
             previewResult = nil
@@ -214,6 +220,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             clipboardFocusedIndex = 0
             selectedIndices.removeAll()
             lastAnchorIndex = nil
+            hoveredIndex = nil
             isSearching = false
             showPreview = false
             previewResult = nil
@@ -242,6 +249,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             keyboardFocusedIndex = 0
             selectedIndices.removeAll()
             lastAnchorIndex = nil
+            hoveredIndex = nil
             showPreview = false
             previewResult = nil
 
@@ -384,6 +392,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
                 self.keyboardFocusedIndex = self.selectedIndex
                 self.selectedIndices.removeAll()
                 self.lastAnchorIndex = nil
+                self.hoveredIndex = nil
                 if let preview = self.previewResult, !self.results.contains(where: { $0.id == preview.id }) {
                     self.showPreview = false
                     self.previewResult = nil

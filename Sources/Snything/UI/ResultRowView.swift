@@ -3,14 +3,13 @@ import SwiftUI
 struct ResultRowView: View {
     let result: SearchResult
     let isSelected: Bool
-    let isMultiSelected: Bool
+    let isHovered: Bool
     var namespace: Namespace.ID
     let isDeleting: Bool
     let selectionCount: Int
 
     @State private var iconImage: NSImage?
     @State private var thumbnailImage: NSImage?
-    @State private var isHovered = false
 
     private let iconSize: CGFloat = 36
 
@@ -33,7 +32,7 @@ struct ResultRowView: View {
 
             Spacer()
 
-            if isSelected && !isDeleting {
+            if isSelected && isHovered && !isDeleting {
                 HStack(spacing: 6) {
                     if selectionCount > 1 {
                         ActionBadge(icon: "square.on.square", label: "\(selectionCount)", color: .accentColor)
@@ -48,33 +47,32 @@ struct ResultRowView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(backgroundFill)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(
-                                strokeStyle,
-                                lineWidth: 1
-                            )
-                    )
-                    .shadow(
-                        color: shadowColor,
-                        radius: (isSelected || isMultiSelected) ? 8 : 0,
-                        x: 0,
-                        y: (isSelected || isMultiSelected) ? 2 : 0
-                    )
-
-                if isMultiSelected && !isDeleting {
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(Color.accentColor)
-                        .frame(width: 3)
-                        .padding(.vertical, 10)
-                        .padding(.leading, 4)
-                }
-            }
-            .matchedGeometryEffect(id: "selection", in: namespace, isSource: isSelected)
-            .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(backgroundFill)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(
+                            isSelected
+                                ? AnyShapeStyle(LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        isDeleting ? Color.red.opacity(0.6) : Color.accentColor.opacity(0.45),
+                                        isDeleting ? Color.red.opacity(0.2) : Color.accentColor.opacity(0.15)
+                                    ]),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                  ))
+                                : AnyShapeStyle(Color.clear),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(
+                    color: isDeleting ? Color.red.opacity(0.25) : (isSelected ? Color.accentColor.opacity(0.15) : Color.clear),
+                    radius: isSelected ? 8 : 0,
+                    x: 0,
+                    y: isSelected ? 2 : 0
+                )
+                .matchedGeometryEffect(id: "selection", in: namespace, isSource: isSelected && isHovered)
+                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
         )
         .contentShape(Rectangle())
         .id(result.id)
@@ -87,9 +85,6 @@ struct ResultRowView: View {
         .rotationEffect(.degrees(isDeleting ? 2 : 0))
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isDeleting)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovered)
-        .onHover { hover in
-            if !isDeleting { isHovered = hover }
-        }
         .onDrag {
             NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
         }
@@ -98,41 +93,6 @@ struct ResultRowView: View {
     private var backgroundFill: Color {
         if isDeleting { return Color.red.opacity(0.12) }
         if isSelected { return Color.accentColor.opacity(0.14) }
-        if isMultiSelected { return Color.accentColor.opacity(0.10) }
-        return Color.clear
-    }
-
-    private var strokeStyle: AnyShapeStyle {
-        if isDeleting {
-            return AnyShapeStyle(LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.red.opacity(0.6),
-                    Color.red.opacity(0.2)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
-        }
-        if isSelected {
-            return AnyShapeStyle(LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.accentColor.opacity(0.45),
-                    Color.accentColor.opacity(0.15)
-                ]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ))
-        }
-        if isMultiSelected {
-            return AnyShapeStyle(Color.accentColor.opacity(0.35))
-        }
-        return AnyShapeStyle(Color.clear)
-    }
-
-    private var shadowColor: Color {
-        if isDeleting { return Color.red.opacity(0.25) }
-        if isSelected { return Color.accentColor.opacity(0.15) }
-        if isMultiSelected { return Color.accentColor.opacity(0.08) }
         return Color.clear
     }
 

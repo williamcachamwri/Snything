@@ -20,8 +20,8 @@ struct ResultListView: View {
                         ForEach(Array(coordinator.results.enumerated()), id: \.element.id) { index, result in
                             ResultRowView(
                                 result: result,
-                                isSelected: index == coordinator.selectedIndex,
-                                isMultiSelected: coordinator.selectedIndices.contains(index) && index != coordinator.selectedIndex,
+                                isSelected: coordinator.selectedIndices.contains(index),
+                                isHovered: index == coordinator.hoveredIndex,
                                 namespace: namespace,
                                 isDeleting: coordinator.deletingResultID?.contains(result.id) ?? false,
                                 selectionCount: coordinator.selectedIndices.count
@@ -30,31 +30,31 @@ struct ResultListView: View {
                             .contentShape(Rectangle())
                             .transition(searchTransition)
                             .onTapGesture {
-                                withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                    coordinator.selectIndex(index)
-                                }
+                                coordinator.selectIndex(index)
                                 coordinator.openSelected()
                             }
                             .simultaneousGesture(
                                 TapGesture(count: 1)
                                     .modifiers(.command)
                                     .onEnded { _ in
-                                        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
-                                            coordinator.toggleSelection(at: index)
-                                        }
+                                        coordinator.toggleSelection(at: index)
                                     }
                             )
                             .onHover { hover in
-                                guard hover else { return }
-                                let shift = NSEvent.modifierFlags.contains(.shift)
-                                if shift {
-                                    guard index != coordinator.selectedIndex else { return }
-                                    if coordinator.lastAnchorIndex == nil {
-                                        coordinator.lastAnchorIndex = coordinator.selectedIndex
+                                if hover {
+                                    coordinator.hoveredIndex = index
+                                    let shift = NSEvent.modifierFlags.contains(.shift)
+                                    if shift {
+                                        if coordinator.lastAnchorIndex == nil {
+                                            coordinator.lastAnchorIndex = coordinator.selectedIndex
+                                        }
+                                        coordinator.selectIndex(index, shiftHeld: true)
+                                    } else if coordinator.selectedIndices.isEmpty {
+                                        coordinator.selectIndex(index)
                                     }
-                                    coordinator.selectIndex(index, shiftHeld: true)
-                                } else if coordinator.selectedIndices.isEmpty {
-                                    coordinator.selectIndex(index)
+                                } else if coordinator.hoveredIndex == index {
+                                    // Only clear if this row was the one being hovered
+                                    // (prevents race when moving between rows)
                                 }
                             }
                         }
