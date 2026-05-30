@@ -7,23 +7,23 @@
     <language>en</language>
 
     <item>
-      <title>Version 1.0.90</title>
-      <sparkle:version>90</sparkle:version>
-      <sparkle:shortVersionString>1.0.90</sparkle:shortVersionString>
+      <title>Version 1.0.91</title>
+      <sparkle:version>91</sparkle:version>
+      <sparkle:shortVersionString>1.0.91</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <pubDate>Sat, 30 May 2026 00:00:00 +0000</pubDate>
+      <pubDate>Sat, 30 May 2026 16:20:00 +0000</pubDate>
       <description><![CDATA[
         <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
         <h3>What's New</h3>
         <ul>
-          <li>Sparkle auto-update integration</li>
-          <li>Custom version format support</li>
+          <li>Sparkle auto-update with EdDSA signature verification</li>
+          <li>Native Sparkle update UI (no custom windows)</li>
         </ul>
       ]]></description>
       <enclosure
-        url="https://github.com/williamcachamwri/Snything/releases/download/v1.0.90/Snything-Release.dmg"
-        sparkle:edSignature="VC/9VwcHdTiLQy4Eo18yPSHHRuF1n6dmlsJ1m1nn1ehfjkRYgyH9BCpOBeDsEXDySCDmMXVnBidKLkoZ8iuCAA=="
-        length="5568377"
+        url="https://github.com/williamcachamwri/Snything/releases/download/v1.0.91/Snything-Release.dmg"
+        sparkle:edSignature="DcZJL3l0nYgt+ACG9KDAW68JvsbWDu1+MPiQQfcRxUXmsLhFaFWbiuqEzJou6AWgZVewPejWzgPfjAdr0YwSBw=="
+        length="5568361"
         type="application/octet-stream"/>
     </item>
 
