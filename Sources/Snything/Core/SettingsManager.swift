@@ -45,11 +45,11 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         didSet { objectWillChange.send() }
     }
 
-    // Tab shortcut chord sequences (2-3 keys after global hotkey prefix)
-    @AppStorage("snything.tabShortcutApplicationsJSON") var tabShortcutApplicationsJSON: String = "[49,0]" {
+    // Tab shortcut chord sequences (1-3 keys after global hotkey prefix)
+    @AppStorage("snything.tabShortcutApplicationsJSON") var tabShortcutApplicationsJSON: String = "[0]" {
         didSet { objectWillChange.send() }
     }
-    @AppStorage("snything.tabShortcutClipboardJSON") var tabShortcutClipboardJSON: String = "[49,8]" {
+    @AppStorage("snything.tabShortcutClipboardJSON") var tabShortcutClipboardJSON: String = "[8]" {
         didSet { objectWillChange.send() }
     }
 
@@ -122,8 +122,8 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         hotkeyShift = false
         hotkeyOption = false
         hotkeyCtrl = false
-        tabShortcutApplicationsJSON = "[49,0]"
-        tabShortcutClipboardJSON = "[49,8]"
+        tabShortcutApplicationsJSON = "[0]"
+        tabShortcutClipboardJSON = "[8]"
         scopesString = "/Applications,/Users,/opt,/usr/local,Library"
     }
 

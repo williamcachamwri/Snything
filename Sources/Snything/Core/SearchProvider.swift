@@ -338,9 +338,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         chordModeActive = true
         chordSequence = []
         chordTimer?.invalidate()
-        chordTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.chordModeActive = false
-            self?.chordSequence = []
+        chordTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+            self?.cancelChord()
         }
     }
 
@@ -351,8 +350,9 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         chordTimer = nil
     }
 
-    func appendChordKey(_ keyCode: Int) {
-        guard chordModeActive else { return }
+    @discardableResult
+    func appendChordKey(_ keyCode: Int) -> Bool {
+        guard chordModeActive else { return false }
         chordSequence.append(keyCode)
         let settings = SettingsManager.shared
         let appsSeq = settings.tabShortcutApplications
@@ -368,7 +368,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
                 showApplications()
                 performSearch(query: "")
             }
-            return
+            return true
         }
         if chordSequence == clipSeq {
             chordModeActive = false
@@ -378,24 +378,24 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             if !showingClipboard {
                 showClipboardHistory()
             }
-            return
+            return true
         }
 
         // Check prefix match
         let appsPrefix = appsSeq.prefix(chordSequence.count)
         let clipPrefix = clipSeq.prefix(chordSequence.count)
         if chordSequence != Array(appsPrefix) && chordSequence != Array(clipPrefix) {
-            // No prefix match → cancel
+            // No prefix match → cancel and let the key pass through
             cancelChord()
-            return
+            return false
         }
 
-        // Prefix match → extend timer
+        // Prefix match → extend timer for multi-key sequences
         chordTimer?.invalidate()
-        chordTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
-            self?.chordModeActive = false
-            self?.chordSequence = []
+        chordTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            self?.cancelChord()
         }
+        return true
     }
 
     func togglePreview() {

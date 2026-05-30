@@ -241,8 +241,8 @@ struct SearchView: View {
 
             // Chord mode: append key to sequence
             if coordinator.chordModeActive {
-                coordinator.appendChordKey(Int(event.keyCode))
-                return true
+                let consumed = coordinator.appendChordKey(Int(event.keyCode))
+                return consumed
             }
 
             switch event.keyCode {
