@@ -942,9 +942,16 @@ struct ImagePreviewView: View {
     @ViewBuilder
     private func ocrOverlay(imageSize: NSSize, containerSize: CGSize) -> some View {
         let fitted = fittedImageRect(imageSize: imageSize, containerSize: containerSize, padding: 12)
-        ZStack {
+        ZStack(alignment: .topLeading) {
             ForEach(ocrTexts) { item in
-                let rect = convertBoundingBox(item.boundingBox, fittedRect: fitted)
+                let box = item.boundingBox
+                // Vision: origin bottom-left, normalized [0,1]
+                // SwiftUI ZStack(alignment: .topLeading): origin top-left
+                let x = box.minX * fitted.width
+                let y = (1.0 - box.maxY) * fitted.height
+                let w = max(box.width * fitted.width, 1)
+                let h = max(box.height * fitted.height, 1)
+
                 ZStack(alignment: .topLeading) {
                     Rectangle()
                         .fill(hoveredOCRID == item.id ? Color.accentColor.opacity(0.25) : Color.yellow.opacity(0.15))
@@ -964,8 +971,8 @@ struct ImagePreviewView: View {
                             .offset(y: -22)
                     }
                 }
-                .frame(width: rect.width, height: rect.height)
-                .position(x: rect.midX, y: rect.midY)
+                .frame(width: w, height: h)
+                .offset(x: x, y: y)
                 .contentShape(Rectangle())
                 .onHover { hovering in
                     hoveredOCRID = hovering ? item.id : nil
@@ -976,7 +983,7 @@ struct ImagePreviewView: View {
             }
         }
         .frame(width: fitted.width, height: fitted.height)
-        .position(x: containerSize.width / 2, y: containerSize.height / 2)
+        .position(x: fitted.midX, y: fitted.midY)
     }
 
     private func fittedImageRect(imageSize: NSSize, containerSize: CGSize, padding: CGFloat) -> CGRect {
@@ -997,16 +1004,6 @@ struct ImagePreviewView: View {
                           y: (containerSize.height - h) / 2,
                           width: w, height: h)
         }
-    }
-
-    private func convertBoundingBox(_ box: CGRect, fittedRect: CGRect) -> CGRect {
-        // Vision boundingBox: origin bottom-left, normalized [0,1]
-        // Convert to view coordinates: origin top-left
-        let x = fittedRect.minX + box.minX * fittedRect.width
-        let y = fittedRect.minY + (1.0 - box.maxY) * fittedRect.height
-        let w = box.width * fittedRect.width
-        let h = box.height * fittedRect.height
-        return CGRect(x: x, y: y, width: w, height: h)
     }
 
     private func copyToClipboard(_ text: String) {
