@@ -284,8 +284,9 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 self.deletingResultID = nil
                 self.results.removeAll { $0.id == result.id }
+                // Clamp selectedIndex but do NOT update keyboardFocusedIndex
+                // so the list doesn't auto-scroll on delete.
                 self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
-                self.keyboardFocusedIndex = self.selectedIndex
                 if self.previewResult?.id == result.id {
                     self.showPreview = false
                     self.previewResult = nil
