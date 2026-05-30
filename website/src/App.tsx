@@ -7,22 +7,11 @@ import Footer from './components/Footer'
 
 export default function App() {
   return (
-    <div className="relative min-h-screen bg-background overflow-x-hidden">
-      {/* Animated background mesh */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] left-[10%] w-[600px] h-[600px] bg-blue-500/8 rounded-full blur-[150px] animate-pulse-glow" />
-        <div className="absolute top-[30%] right-[-10%] w-[500px] h-[500px] bg-purple-500/6 rounded-full blur-[120px] animate-pulse-glow" style={{ animationDelay: '2s' }} />
-        <div className="absolute bottom-[-10%] left-[30%] w-[700px] h-[400px] bg-emerald-500/5 rounded-full blur-[140px] animate-pulse-glow" style={{ animationDelay: '4s' }} />
-        {/* Grid pattern */}
-        <div 
-          className="absolute inset-0 opacity-[0.03]"
-          style={{ 
-            backgroundImage: 'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-            backgroundSize: '60px 60px'
-          }}
-        />
+    <div className="relative min-h-screen bg-[#08080a] overflow-x-hidden">
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 opacity-[0.02]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.12) 1px, transparent 1px)', backgroundSize: '80px 80px' }} />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-[#3b82f6]/4 rounded-full blur-[180px]" style={{ animation: 'glow-pulse 6s ease-in-out infinite' }} />
       </div>
-
       <Navbar />
       <main className="relative z-10">
         <Hero />
