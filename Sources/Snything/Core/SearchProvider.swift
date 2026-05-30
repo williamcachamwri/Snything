@@ -36,6 +36,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     // Multi-selection state
     @Published var selectedIndices: Set<Int> = []
     @Published var lastAnchorIndex: Int? = nil
+    @Published var isKeyboardNavigating: Bool = false
 
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared
@@ -73,12 +74,12 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func selectIndex(_ index: Int, shiftHeld: Bool = false) {
         guard results.indices.contains(index) else { return }
 
-        if shiftHeld, let anchor = lastAnchorIndex {
-            // Range selection
+        if shiftHeld {
+            let anchor = lastAnchorIndex ?? selectedIndex
+            if lastAnchorIndex == nil { lastAnchorIndex = selectedIndex }
             let range = min(anchor, index)...max(anchor, index)
             selectedIndices = Set(range)
         } else {
-            // Single selection, clear multi
             selectedIndices.removeAll()
             lastAnchorIndex = index
         }
@@ -107,9 +108,13 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             return
         }
         guard !results.isEmpty else { return }
+        isKeyboardNavigating = true
         let next = (selectedIndex + 1) % results.count
         selectIndex(next, shiftHeld: shiftHeld)
         updatePreview()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.isKeyboardNavigating = false
+        }
     }
 
     func selectPrevious(shiftHeld: Bool = false) {
@@ -121,9 +126,13 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             return
         }
         guard !results.isEmpty else { return }
+        isKeyboardNavigating = true
         let prev = (selectedIndex - 1 + results.count) % results.count
         selectIndex(prev, shiftHeld: shiftHeld)
         updatePreview()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.isKeyboardNavigating = false
+        }
     }
 
     private func handleFileSystemChanged() {

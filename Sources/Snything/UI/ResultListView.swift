@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ResultListView: View {
     @ObservedObject var coordinator: SearchCoordinator
@@ -43,7 +44,12 @@ struct ResultListView: View {
                                 }
                         )
                         .onHover { hover in
-                            if hover && coordinator.selectedIndices.isEmpty {
+                            guard hover else { return }
+                            let shift = NSEvent.modifierFlags.contains(.shift)
+                            if shift {
+                                // Shift-hover extends selection range
+                                coordinator.selectIndex(index, shiftHeld: true)
+                            } else if coordinator.selectedIndices.isEmpty {
                                 withAnimation(.easeOut(duration: 0.08)) {
                                     coordinator.selectIndex(index)
                                 }
@@ -54,7 +60,9 @@ struct ResultListView: View {
                 .padding(.vertical, 4)
             }
             .background(Color.clear)
+            // Only auto-scroll on keyboard navigation, not hover
             .onChange(of: coordinator.keyboardFocusedIndex) { _, newValue in
+                guard coordinator.isKeyboardNavigating else { return }
                 if coordinator.results.indices.contains(newValue) {
                     withAnimation(.easeOut(duration: 0.12)) {
                         proxy.scrollTo(coordinator.results[newValue].id, anchor: .center)

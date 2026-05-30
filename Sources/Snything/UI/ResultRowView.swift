@@ -44,9 +44,10 @@ struct ResultRowView: View {
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else if isMultiSelected && !isDeleting {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.accentColor.opacity(0.8))
+                Circle()
+                    .fill(Color.accentColor)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: Color.accentColor.opacity(0.4), radius: 4, x: 0, y: 0)
                     .transition(.scale.combined(with: .opacity))
             }
         }
