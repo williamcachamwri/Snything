@@ -121,6 +121,11 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     ) {
         DispatchQueue.main.async { [weak self] in
             let nsError = error as NSError
+            print("[Sparkle] didNotFindUpdate: domain=\(nsError.domain) code=\(nsError.code)")
+            print("[Sparkle] error description: \(nsError.localizedDescription)")
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                print("[Sparkle] underlying error: \(underlying)")
+            }
             if nsError.domain == "SPUErrorDomain" && nsError.code == 1001 {
                 self?.statusMessage = "You're on the latest version."
             } else {
@@ -128,6 +133,16 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
             }
             self?.isChecking = false
         }
+    }
+
+    func updater(
+        _ updater: SPUUpdater,
+        failedToDownloadUpdate item: SUAppcastItem,
+        error: Error
+    ) {
+        print("[Sparkle] failedToDownloadUpdate: \(error)")
+        statusMessage = "Download failed: \(error.localizedDescription)"
+        isChecking = false
     }
 
     func updater(

@@ -60,7 +60,7 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>SUFeedURL</key>
-    <string>https://raw.githubusercontent.com/williamcachamwri/Snything/main/appcast.xml</string>
+    <string>https://williamcachamwri.github.io/Snything/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string>IBr4qCEIK2U2cuWXGbrWNKKq8uqsmRSQU39Nq10Gy4Y=</string>
 </dict>

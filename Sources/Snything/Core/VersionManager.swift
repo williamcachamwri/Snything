@@ -88,7 +88,7 @@ final class VersionManager {
     }
 
     /// The appcast URL for Sparkle update checks.
-    let appcastURL = URL(string: "https://raw.githubusercontent.com/williamcachamwri/Snything/main/appcast.xml")!
+    let appcastURL = URL(string: "https://williamcachamwri.github.io/Snything/appcast.xml")!
 
     private init() {}
 
