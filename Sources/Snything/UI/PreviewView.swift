@@ -837,9 +837,19 @@ struct ImagePreviewView: View {
     @State private var ocrTexts: [OCRText] = []
     @State private var showOCRPanel = false
 
+    // Zoom & Pan state
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+    @State private var isDragging = false
+
     private var allOCRText: String {
         ocrTexts.map(\.text).joined(separator: "\n")
     }
+
+    private let minScale: CGFloat = 1.0
+    private let maxScale: CGFloat = 5.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -847,10 +857,7 @@ struct ImagePreviewView: View {
                 Color.black.opacity(0.15)
 
                 if let nsImage {
-                    Image(nsImage: nsImage)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .padding(12)
+                    imageContent(nsImage)
                 } else if !isLoading {
                     VStack(spacing: 8) {
                         Image(systemName: "photo")
@@ -860,6 +867,13 @@ struct ImagePreviewView: View {
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
+                }
+
+                // Zoom controls overlay
+                if scale > 1.0 || offset != .zero {
+                    zoomControlBar
+                        .padding(12)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 }
 
                 // OCR button
@@ -909,6 +923,141 @@ struct ImagePreviewView: View {
             await loadImageAndExif()
             await loadOCR()
         }
+    }
+
+    // MARK: - Zoom & Pan Image Content
+
+    private func imageContent(_ image: NSImage) -> some View {
+        GeometryReader { geo in
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .scaleEffect(scale)
+                .offset(offset)
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: scale)
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: offset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    // Double-click: toggle zoom 1x <-> 2x centered
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        if scale > 1.1 {
+                            scale = 1.0
+                            offset = .zero
+                        } else {
+                            scale = 2.0
+                            offset = .zero
+                        }
+                    }
+                }
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            guard scale > 1.0 else { return }
+                            isDragging = true
+                            let newWidth = lastOffset.width + value.translation.width
+                            let newHeight = lastOffset.height + value.translation.height
+                            offset = clampOffset(CGSize(width: newWidth, height: newHeight), in: geo.size)
+                        }
+                        .onEnded { _ in
+                            isDragging = false
+                            lastOffset = offset
+                        }
+                )
+        }
+        .padding(12)
+        .cursor(.crosshair, when: scale > 1.0)
+        .cursor(.arrow, when: scale <= 1.0)
+    }
+
+    // MARK: - Zoom Controls
+
+    private var zoomControlBar: some View {
+        VStack(spacing: 6) {
+            // Zoom percentage
+            Text("\(Int(scale * 100))%")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.black.opacity(0.6))
+                )
+
+            HStack(spacing: 4) {
+                zoomButton(icon: "minus") {
+                    zoomOut()
+                }
+                zoomButton(icon: "arrow.counterclockwise") {
+                    resetZoom()
+                }
+                zoomButton(icon: "plus") {
+                    zoomIn()
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.black.opacity(0.5))
+            )
+        }
+    }
+
+    private func zoomButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 26, height: 26)
+                .background(
+                    Circle()
+                        .fill(Color.white.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Zoom Actions
+
+    private func zoomIn() {
+        let newScale = min(scale * 1.25, maxScale)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            scale = newScale
+            offset = .zero
+            lastOffset = .zero
+        }
+    }
+
+    private func zoomOut() {
+        let newScale = max(scale / 1.25, minScale)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            scale = newScale
+            if newScale <= 1.0 {
+                offset = .zero
+            }
+            lastOffset = offset
+        }
+    }
+
+    private func resetZoom() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            scale = 1.0
+            offset = .zero
+            lastOffset = .zero
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func clampOffset(_ offset: CGSize, in containerSize: CGSize) -> CGSize {
+        guard scale > 1.0 else { return .zero }
+        let maxOffsetX = containerSize.width * (scale - 1) / 2
+        let maxOffsetY = containerSize.height * (scale - 1) / 2
+        return CGSize(
+            width: min(max(offset.width, -maxOffsetX), maxOffsetX),
+            height: min(max(offset.height, -maxOffsetY), maxOffsetY)
+        )
     }
 
     private func copyToClipboard(_ text: String) {
@@ -966,6 +1115,14 @@ struct ImagePreviewView: View {
         isLoading = true
         defer { isLoading = false }
 
+        // Reset zoom on new image
+        await MainActor.run {
+            scale = 1.0
+            lastScale = 1.0
+            offset = .zero
+            lastOffset = .zero
+        }
+
         let (image, exifData) = await FastImageLoader.load(url: url)
         await MainActor.run {
             self.nsImage = image
@@ -980,6 +1137,20 @@ struct ImagePreviewView: View {
         await MainActor.run {
             withAnimation(.easeOut(duration: 0.25)) {
                 self.ocrTexts = texts
+            }
+        }
+    }
+}
+
+// MARK: - Cursor Modifier
+
+private extension View {
+    func cursor(_ cursor: NSCursor, when condition: Bool) -> some View {
+        self.onHover { hovering in
+            if condition && hovering {
+                cursor.push()
+            } else {
+                NSCursor.pop()
             }
         }
     }
