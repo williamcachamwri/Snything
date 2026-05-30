@@ -310,6 +310,34 @@ struct SearchView: View {
                 NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
                 return true
             default:
+                let code = Int(event.keyCode)
+                let settings = SettingsManager.shared
+                if event.modifierFlags.contains(.command) {
+                    // Direct tab shortcuts when window is already visible
+                    let isBareModifier = code == 54 || code == 55 || code == 56 || code == 58 ||
+                                         code == 59 || code == 60 || code == 61 || code == 62
+                    if !isBareModifier {
+                        if let first = settings.tabShortcutApplications.first, code == first {
+                            if !coordinator.showingApplications {
+                                self.query = ""
+                                self.stopRecentsTimer()
+                                self.stopClipboardTimer()
+                                coordinator.showApplications()
+                                coordinator.performSearch(query: "")
+                            }
+                            return true
+                        }
+                        if let first = settings.tabShortcutClipboard.first, code == first {
+                            if !coordinator.showingClipboard {
+                                self.query = ""
+                                self.stopRecentsTimer()
+                                coordinator.showClipboardHistory()
+                                self.startClipboardTimer()
+                            }
+                            return true
+                        }
+                    }
+                }
                 if !self.isSearchFocused && event.characters?.count == 1 {
                     self.query += event.characters!
                     self.isSearchFocused = true

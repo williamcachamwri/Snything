@@ -338,7 +338,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
         chordModeActive = true
         chordSequence = []
         chordTimer?.invalidate()
-        chordTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { [weak self] _ in
+        chordTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
             self?.cancelChord()
         }
     }
