@@ -228,6 +228,16 @@ struct SearchView: View {
             guard let coordinator = coordinator else { return false }
 
             switch event.keyCode {
+            case 123: // left arrow
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
+                    self.switchToPreviousTab()
+                }
+                return true
+            case 124: // right arrow
+                withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
+                    self.switchToNextTab()
+                }
+                return true
             case 125: // down arrow
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
                     coordinator.selectNext()
@@ -281,6 +291,47 @@ struct SearchView: View {
                 }
                 return false
             }
+        }
+    }
+
+    private func switchToPreviousTab() {
+        if coordinator.showingClipboard {
+            query = ""
+            stopClipboardTimer()
+            stopRecentsTimer()
+            coordinator.showApplications()
+            coordinator.performSearch(query: "")
+        } else if coordinator.showingApplications {
+            query = ""
+            stopClipboardTimer()
+            coordinator.showRecents()
+            startRecentsTimer()
+        } else {
+            query = ""
+            stopRecentsTimer()
+            coordinator.showClipboardHistory()
+            startClipboardTimer()
+        }
+    }
+
+    private func switchToNextTab() {
+        if coordinator.showingClipboard {
+            query = ""
+            stopClipboardTimer()
+            coordinator.showRecents()
+            startRecentsTimer()
+        } else if coordinator.showingApplications {
+            query = ""
+            stopRecentsTimer()
+            stopClipboardTimer()
+            coordinator.showClipboardHistory()
+            startClipboardTimer()
+        } else {
+            query = ""
+            stopRecentsTimer()
+            stopClipboardTimer()
+            coordinator.showApplications()
+            coordinator.performSearch(query: "")
         }
     }
 

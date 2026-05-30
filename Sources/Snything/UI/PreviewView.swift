@@ -426,12 +426,17 @@ struct TreeNodeView: View {
 
 func buildTree(at root: URL, depth: Int, maxDepth: Int, maxChildren: Int) -> TreeNode {
     let fm = FileManager.default
+    let homeDir = fm.homeDirectoryForCurrentUser
+    let isHugeDir = root.path == homeDir.path || root.path.hasPrefix(homeDir.path) && root.pathComponents.count <= homeDir.pathComponents.count + 1
+    let actualMaxDepth = isHugeDir ? 1 : maxDepth
+    let actualMaxChildren = isHugeDir ? 30 : maxChildren
+
     var children: [TreeNode] = []
 
-    if depth < maxDepth,
+    if depth < actualMaxDepth,
        let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: .skipsHiddenFiles) {
         let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
-        for item in sorted.prefix(maxChildren) {
+        for item in sorted.prefix(actualMaxChildren) {
             let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
             if isDir {
                 let child = buildTree(at: item, depth: depth + 1, maxDepth: maxDepth, maxChildren: maxChildren)
@@ -448,9 +453,16 @@ func buildTree(at root: URL, depth: Int, maxDepth: Int, maxChildren: Int) -> Tre
 
 func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCount: Int) {
     let fm = FileManager.default
+    let homeDir = fm.homeDirectoryForCurrentUser
+    let isHugeDir = root.path == homeDir.path || root.path.hasPrefix(homeDir.path) && root.pathComponents.count <= homeDir.pathComponents.count + 1
+    if isHugeDir {
+        return (0, 0, 0)
+    }
+
     var totalSize: Int64 = 0
     var fileCount = 0
     var dirCount = 0
+    var visited = 0
 
     guard let enumerator = fm.enumerator(
         at: root,
@@ -470,6 +482,8 @@ func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCou
                 }
             }
         }
+        visited += 1
+        if visited >= 2000 { break }
     }
     return (totalSize, fileCount, dirCount)
 }
