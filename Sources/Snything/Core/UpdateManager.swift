@@ -6,9 +6,6 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     static let shared = UpdateManager()
 
     @Published var isChecking = false
-    @Published var showAlert = false
-    @Published var alertVersion: String = ""
-    @Published var alertReleaseNotes: String = ""
     @Published var statusMessage: String?
 
     private var updaterController: SPUStandardUpdaterController!
@@ -18,7 +15,6 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         super.init()
 
         // Sparkle requires a valid .app bundle with CFBundleIdentifier and CFBundleVersion.
-        // SPM debug builds (swift run / Xcode DerivedData) lack these keys.
         guard Bundle.main.bundleIdentifier != nil,
               Bundle.main.infoDictionary?["CFBundleVersion"] != nil else {
             print("[Sparkle] Bundle missing CFBundleIdentifier or CFBundleVersion — updater disabled")
@@ -57,27 +53,24 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         updaterController.updater.updateCheckInterval = 24 * 60 * 60
     }
 
-    /// Check for updates. If `showAnyway` is true, always show UI even if no update.
+    /// Check for updates. Sparkle shows its own native UI.
     func checkForUpdates(showAnyway: Bool = false) {
         guard !isChecking else { return }
 
         guard isStarted else {
-            statusMessage = "Updates unavailable in debug mode. Build the .app bundle for Sparkle updates."
-            showAlert = true
-            alertVersion = "N/A"
-            alertReleaseNotes = "Sparkle updater requires a proper .app bundle.\n\nIn SPM debug builds, automatic updates are disabled.\nBuild with `.github/build_app.sh` to enable Sparkle."
-            ChangelogWindowController.shared.showAnimated()
+            // In debug mode (swift run), show native alert instead of custom window
+            let alert = NSAlert()
+            alert.messageText = "Updates Unavailable"
+            alert.informativeText = "Automatic updates require a signed .app bundle.\n\nBuild with `.github/build_app.sh` and install to /Applications/ to enable Sparkle updates."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
             return
         }
 
         isChecking = true
         statusMessage = nil
-
-        if showAnyway {
-            updaterController.checkForUpdates(nil)
-        } else {
-            updaterController.updater.checkForUpdatesInBackground()
-        }
+        updaterController.checkForUpdates(nil)
     }
 
     func installUpdate() {
@@ -86,7 +79,7 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     }
 
     func skipUpdate() {
-        // Sparkle manages skip logic internally via user preferences
+        // Sparkle manages skip logic internally
     }
 
     // MARK: - SPUUpdaterDelegate
@@ -107,11 +100,8 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         didFindValidUpdate item: SUAppcastItem
     ) {
         DispatchQueue.main.async { [weak self] in
-            self?.alertVersion = item.displayVersionString
-            self?.alertReleaseNotes = item.itemDescription ?? ""
-            self?.showAlert = true
             self?.statusMessage = "Update available: v\(item.displayVersionString)"
-            ChangelogWindowController.shared.showAnimated()
+            // Sparkle's SPUStandardUserDriver handles the UI automatically
         }
     }
 
@@ -122,10 +112,6 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         DispatchQueue.main.async { [weak self] in
             let nsError = error as NSError
             print("[Sparkle] didNotFindUpdate: domain=\(nsError.domain) code=\(nsError.code)")
-            print("[Sparkle] error description: \(nsError.localizedDescription)")
-            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
-                print("[Sparkle] underlying error: \(underlying)")
-            }
             if nsError.domain == "SPUErrorDomain" && nsError.code == 1001 {
                 self?.statusMessage = "You're on the latest version."
             } else {
