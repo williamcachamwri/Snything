@@ -1652,19 +1652,29 @@ struct EXIFData {
 }
 
 enum FastImageLoader {
+    private static let rawExtensions: Set<String> = [
+        "cr2", "cr3", "nef", "nrw", "arw", "sr2", "raf", "dng", "orf", "rw2", "pef",
+        "raw", "mos", "3fr", "erf", "kdc", "iiq", "x3f"
+    ]
+
     static func load(url: URL) async -> (NSImage?, EXIFData?) {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
             return (nil, nil)
         }
 
+        let isRAW = rawExtensions.contains(url.pathExtension.lowercased())
+
         // Extract EXIF first (cheap)
         let exif = extractEXIF(from: source, url: url)
 
-        // Fast thumbnail: 800px max, never full decode
+        // For RAW: use embedded JPEG thumbnail if available, max 600px
+        // For regular images: 1200px max
+        let maxPixelSize = isRAW ? 600 : 1200
         let thumbOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 1200
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
+            kCGImageSourceShouldCache: false
         ]
 
         var cgImage: CGImage?
@@ -1675,7 +1685,20 @@ enum FastImageLoader {
         }
 
         guard let cgImage else { return (nil, exif) }
-        let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+
+        let size = NSSize(width: cgImage.width, height: cgImage.height)
+        let nsImage = NSImage(cgImage: cgImage, size: size)
+
+        // For RAW, aggressively downsample to preview panel size to save memory
+        if isRAW, let rep = nsImage.representations.first {
+            let previewSize = NSSize(width: 800, height: 800)
+            let downsampled = NSImage(size: previewSize)
+            downsampled.lockFocus()
+            rep.draw(in: NSRect(origin: .zero, size: previewSize))
+            downsampled.unlockFocus()
+            return (downsampled, exif)
+        }
+
         return (nsImage, exif)
     }
 

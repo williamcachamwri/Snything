@@ -109,8 +109,8 @@ struct ResultRowView: View {
         )
         .contentShape(Rectangle())
         .id(result.id)
-        .onAppear {
-            loadIcon()
+        .task(id: result.id) {
+            await loadThumbnailOrIcon()
         }
         .offset(x: isDeleting ? 60 : 0)
         .scaleEffect(isDeleting ? 0.92 : (isHovered ? 1.005 : 1.0))
@@ -157,27 +157,20 @@ struct ResultRowView: View {
         )
     }
 
-    private func loadIcon() {
-        if result.kind == .image {
-            loadThumbnail()
-            return
-        }
-        DispatchQueue.global(qos: .userInitiated).async {
+    private func loadThumbnailOrIcon() async {
+        switch result.kind {
+        case .image:
+            if let image = await ThumbnailLoader.loadImageThumbnail(url: result.url, size: iconSize) {
+                thumbnailImage = image
+            }
+        case .video:
+            if let image = await ThumbnailLoader.loadVideoThumbnail(url: result.url, size: iconSize) {
+                thumbnailImage = image
+            }
+        default:
             let image = NSWorkspace.shared.icon(forFile: result.url.path)
             let resized = image.resized(to: NSSize(width: iconSize * 2, height: iconSize * 2))
-            DispatchQueue.main.async {
-                self.iconImage = resized
-            }
-        }
-    }
-
-    private func loadThumbnail() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            guard let image = NSImage(contentsOfFile: result.url.path) else { return }
-            let resized = image.resized(to: NSSize(width: iconSize * 2, height: iconSize * 2))
-            DispatchQueue.main.async {
-                self.thumbnailImage = resized
-            }
+            iconImage = resized
         }
     }
 
