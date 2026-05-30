@@ -43,34 +43,38 @@ struct ResultRowView: View {
                     ActionBadge(icon: "space", label: "Preview")
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
-            } else if isMultiSelected && !isDeleting {
-                Circle()
-                    .fill(Color.accentColor)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: Color.accentColor.opacity(0.4), radius: 4, x: 0, y: 0)
-                    .transition(.scale.combined(with: .opacity))
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(backgroundFill)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(
-                            strokeStyle,
-                            lineWidth: 1
-                        )
-                )
-                .shadow(
-                    color: shadowColor,
-                    radius: (isSelected || isMultiSelected) ? 8 : 0,
-                    x: 0,
-                    y: (isSelected || isMultiSelected) ? 2 : 0
-                )
-                .matchedGeometryEffect(id: "selection", in: namespace, isSource: isSelected)
-                .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(backgroundFill)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(
+                                strokeStyle,
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(
+                        color: shadowColor,
+                        radius: (isSelected || isMultiSelected) ? 8 : 0,
+                        x: 0,
+                        y: (isSelected || isMultiSelected) ? 2 : 0
+                    )
+
+                if isMultiSelected && !isDeleting {
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(Color.accentColor)
+                        .frame(width: 3)
+                        .padding(.vertical, 10)
+                        .padding(.leading, 4)
+                }
+            }
+            .matchedGeometryEffect(id: "selection", in: namespace, isSource: isSelected)
+            .animation(.spring(response: 0.22, dampingFraction: 0.8), value: isSelected)
         )
         .contentShape(Rectangle())
         .id(result.id)
@@ -94,7 +98,7 @@ struct ResultRowView: View {
     private var backgroundFill: Color {
         if isDeleting { return Color.red.opacity(0.12) }
         if isSelected { return Color.accentColor.opacity(0.14) }
-        if isMultiSelected { return Color.accentColor.opacity(0.06) }
+        if isMultiSelected { return Color.accentColor.opacity(0.10) }
         return Color.clear
     }
 
@@ -120,7 +124,7 @@ struct ResultRowView: View {
             ))
         }
         if isMultiSelected {
-            return AnyShapeStyle(Color.accentColor.opacity(0.25))
+            return AnyShapeStyle(Color.accentColor.opacity(0.35))
         }
         return AnyShapeStyle(Color.clear)
     }
