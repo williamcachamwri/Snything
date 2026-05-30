@@ -34,6 +34,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var deletingResultID: String? = nil
     @Published var deletingClipboardID: String? = nil
     @Published var shouldAutoScroll: Bool = false
+    @Published var showActionPalette: Bool = false
 
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared

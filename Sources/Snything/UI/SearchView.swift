@@ -44,6 +44,16 @@ struct SearchView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: coordinator.showPreview)
+        .overlay {
+            if coordinator.showActionPalette {
+                ActionPaletteView(coordinator: coordinator)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.92)),
+                        removal: .opacity.combined(with: .scale(scale: 0.92))
+                    ))
+                    .animation(.spring(response: 0.25, dampingFraction: 0.8), value: coordinator.showActionPalette)
+            }
+        }
         .onAppear {
             isSearchFocused = true
             setupKeyboardMonitor()
@@ -227,7 +237,29 @@ struct SearchView: View {
         KeyboardManager.shared.onKeyDown = { [weak coordinator] event in
             guard let coordinator = coordinator else { return false }
 
+            // Action palette intercepts all keys except when closed
+            if coordinator.showActionPalette {
+                if event.keyCode == 53 { // Esc closes palette
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        coordinator.showActionPalette = false
+                    }
+                    return true
+                }
+                // Let SwiftUI buttons inside palette handle other keys
+                return false
+            }
+
             switch event.keyCode {
+            case 48: // tab
+                if !coordinator.showingClipboard,
+                   !coordinator.results.isEmpty,
+                   coordinator.results.indices.contains(coordinator.selectedIndex) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        coordinator.showActionPalette = true
+                    }
+                    return true
+                }
+                return false
             case 123: // left arrow
                 withAnimation(.spring(response: 0.18, dampingFraction: 0.8)) {
                     self.switchToPreviousTab()

@@ -37,6 +37,24 @@ struct ResultRowView: View {
                     ActionBadge(icon: "delete.left", label: "Delete", color: .red, showLabel: !isPreviewOpen)
                     ActionBadge(icon: "return", label: "Open", showLabel: !isPreviewOpen)
                     ActionBadge(icon: "space", label: "Preview", showLabel: !isPreviewOpen)
+
+                    // Tab hint for action palette
+                    if !isPreviewOpen {
+                        Text("Tab")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundColor(.accentColor.opacity(0.8))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.accentColor.opacity(0.10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                            .stroke(Color.accentColor.opacity(0.25), lineWidth: 0.5)
+                                    )
+                            )
+                            .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
