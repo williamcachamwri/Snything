@@ -266,6 +266,9 @@ struct SearchView: View {
                 }
                 return true
             case 51: // delete / backspace
+                if self.isSearchFocused {
+                    return false // let TextField handle delete
+                }
                 if coordinator.showingClipboard {
                     coordinator.deleteSelectedClipboardItem()
                 } else if !coordinator.results.isEmpty {

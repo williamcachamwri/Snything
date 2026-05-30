@@ -364,6 +364,11 @@ struct HotkeySettingsView: View {
                 let code = Int(event.keyCode)
                 switch listeningFor {
                 case "global":
+                    let mods = event.modifierFlags
+                    settings.hotkeyCmd = mods.contains(.command)
+                    settings.hotkeyShift = mods.contains(.shift)
+                    settings.hotkeyOption = mods.contains(.option)
+                    settings.hotkeyCtrl = mods.contains(.control)
                     settings.hotkeyKeyCode = code
                     NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
                 case "files":
