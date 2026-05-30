@@ -59,15 +59,19 @@ struct ClipboardPreviewView: View {
     private var contentAreaWithBadge: some View {
         ZStack(alignment: .bottomTrailing) {
             contentArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+                .padding(.top, 8)
 
             if let sourceAppIcon {
                 appIconBadge(icon: sourceAppIcon)
             }
-
+        }
+        .overlay(alignment: .topTrailing) {
             clearButtonArea
                 .padding(.top, 12)
                 .padding(.trailing, 12)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         }
     }
 
