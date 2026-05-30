@@ -68,46 +68,76 @@ final class OCRIndexManager: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Use mdfind to quickly discover images in the search scopes.
-    /// This leverages Spotlight's indexed metadata, so it's much faster than filesystem enumeration.
-    private func discoverImagesViaMdfind(scopes: [String]) async -> [String] {
+    /// Use mdfind -onlyin to discover images in search scopes.
+    /// Uses Spotlight's pre-built index for instant results.
+    /// Returns up to maxImages total, sorted by recency (most recent first).
+    private func discoverImagesViaMdfind(scopes: [String], maxImages: Int = 2000) async -> [String] {
+        let fm = FileManager.default
         let imageUTIs = [
             "public.png", "public.jpeg", "public.tiff", "public.gif",
             "public.webp", "public.heic", "public.bmp", "com.compuserve.gif"
         ]
-        // Build predicate: (kMDItemContentType == 'public.png' || ...) && (kMDItemPath =~ '/scope1/.*' || ...)
         let typePred = imageUTIs.map { "kMDItemContentType == '\($0)'" }.joined(separator: " || ")
-        let scopePred = scopes.map { scope in
-            let clean = scope.trimmingCharacters(in: .whitespaces)
-            return "kMDItemPath =~ '^\(clean)/.*'"
-        }.joined(separator: " || ")
-        let predicate = "(\(typePred)) && (\(scopePred))"
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
-        process.arguments = [predicate]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
+        var allPaths: [String] = []
+        allPaths.reserveCapacity(maxImages)
 
-        do {
-            try process.run()
-        } catch {
-            print("[OCR] mdfind failed to start: \(error)")
-            return []
+        for scope in scopes {
+            guard !Task.isCancelled else { break }
+
+            // Resolve relative paths (e.g. "Library")
+            let resolved: String
+            if scope.hasPrefix("/") {
+                resolved = scope
+            } else {
+                resolved = fm.currentDirectoryPath + "/" + scope
+            }
+
+            guard fm.fileExists(atPath: resolved) else {
+                print("[OCR] Scope '\(resolved)' does not exist, skipping")
+                continue
+            }
+
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+            process.arguments = ["-onlyin", resolved, typePred]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = FileHandle.nullDevice
+
+            do {
+                try process.run()
+            } catch {
+                print("[OCR] mdfind failed for '\(resolved)': \(error)")
+                continue
+            }
+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+
+            guard !Task.isCancelled else { return [] }
+
+            let paths = String(data: data, encoding: .utf8)?
+                .components(separatedBy: .newlines)
+                .filter { !$0.isEmpty } ?? []
+
+            print("[OCR] mdfind -onlyin '\(resolved)' returned \(paths.count) images")
+            allPaths.append(contentsOf: paths)
         }
 
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        // Deduplicate and limit
+        var seen = Set<String>()
+        var unique: [String] = []
+        unique.reserveCapacity(min(allPaths.count, maxImages))
+        for path in allPaths {
+            if seen.insert(path).inserted {
+                unique.append(path)
+                if unique.count >= maxImages { break }
+            }
+        }
 
-        guard !Task.isCancelled else { return [] }
-
-        let paths = String(data: data, encoding: .utf8)?
-            .components(separatedBy: .newlines)
-            .filter { !$0.isEmpty } ?? []
-
-        print("[OCR] mdfind returned \(paths.count) image paths")
-        return paths
+        print("[OCR] Total unique images to index: \(unique.count)")
+        return unique
     }
 
     private func buildIndex(for imagePaths: [String]) async {
