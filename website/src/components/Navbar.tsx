@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Menu, X, Download } from 'lucide-react'
 
 export default function Navbar() {
@@ -19,20 +18,18 @@ export default function Navbar() {
   ]
 
   return (
-    <motion.header
-      initial={{ y: -100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+    <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled ? 'glass' : 'bg-transparent'
+        scrolled ? 'glass shadow-lg shadow-black/20' : 'bg-transparent'
       }`}
+      style={{ animation: 'slide-up 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards' }}
     >
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <a href="#" className="flex items-center gap-2.5 group">
-          <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-            <Search className="w-4 h-4 text-primary" />
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-primary flex items-center justify-center group-hover:shadow-lg group-hover:shadow-primary/30 transition-all duration-300">
+            <Search className="w-4 h-4 text-white" />
           </div>
-          <span className="text-lg font-semibold tracking-tight">Snything</span>
+          <span className="text-lg font-bold tracking-tight">Snything</span>
         </a>
 
         <nav className="hidden md:flex items-center gap-1">
@@ -40,9 +37,10 @@ export default function Navbar() {
             <a
               key={link.label}
               href={link.href}
-              className="px-4 py-2 text-sm text-text-muted hover:text-text rounded-full hover:bg-surface-light transition-all duration-300"
+              className="relative px-4 py-2 text-sm text-text-muted hover:text-text rounded-full transition-all duration-300 group"
             >
               {link.label}
+              <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-0 h-0.5 bg-primary rounded-full group-hover:w-6 transition-all duration-300" />
             </a>
           ))}
         </nav>
@@ -50,7 +48,7 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-3">
           <a
             href="#download"
-            className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-primary-glow text-white text-sm font-medium rounded-full transition-all duration-300 glow"
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-blue-500 hover:from-blue-500 hover:to-primary text-white text-sm font-medium rounded-full transition-all duration-500 shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:scale-105"
           >
             <Download className="w-4 h-4" />
             Download
@@ -65,38 +63,33 @@ export default function Navbar() {
         </button>
       </div>
 
-      <AnimatePresence>
-        {menuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.3 }}
-            className="md:hidden glass border-t border-border/50 overflow-hidden"
-          >
-            <div className="px-6 py-4 flex flex-col gap-2">
-              {links.map((link) => (
-                <a
-                  key={link.label}
-                  href={link.href}
-                  onClick={() => setMenuOpen(false)}
-                  className="px-4 py-3 text-sm text-text-muted hover:text-text hover:bg-surface-light rounded-lg transition-colors"
-                >
-                  {link.label}
-                </a>
-              ))}
+      {menuOpen && (
+        <div 
+          className="md:hidden glass border-t border-border/50 overflow-hidden"
+          style={{ animation: 'slide-up 0.3s ease forwards' }}
+        >
+          <div className="px-6 py-4 flex flex-col gap-2">
+            {links.map((link) => (
               <a
-                href="#download"
+                key={link.label}
+                href={link.href}
                 onClick={() => setMenuOpen(false)}
-                className="mt-2 flex items-center justify-center gap-2 px-5 py-2.5 bg-primary text-white text-sm font-medium rounded-full"
+                className="px-4 py-3 text-sm text-text-muted hover:text-text hover:bg-surface-light rounded-lg transition-colors"
               >
-                <Download className="w-4 h-4" />
-                Download
+                {link.label}
               </a>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.header>
+            ))}
+            <a
+              href="#download"
+              onClick={() => setMenuOpen(false)}
+              className="mt-2 flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary to-blue-500 text-white text-sm font-medium rounded-full"
+            >
+              <Download className="w-4 h-4" />
+              Download
+            </a>
+          </div>
+        </div>
+      )}
+    </header>
   )
 }
