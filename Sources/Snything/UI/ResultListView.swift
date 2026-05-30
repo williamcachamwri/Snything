@@ -29,7 +29,8 @@ struct ResultListView: View {
                             result: result,
                             isSelected: index == coordinator.selectedIndex,
                             namespace: namespace,
-                            isDeleting: coordinator.deletingResultID == result.id
+                            isDeleting: coordinator.deletingResultID == result.id,
+                            isPreviewOpen: coordinator.showPreview
                         )
                         .id(result.id)
                         .contentShape(Rectangle())

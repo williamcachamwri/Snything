@@ -5,6 +5,7 @@ struct ResultRowView: View {
     let isSelected: Bool
     var namespace: Namespace.ID
     let isDeleting: Bool
+    let isPreviewOpen: Bool
 
     @State private var iconImage: NSImage?
     @State private var thumbnailImage: NSImage?
@@ -33,9 +34,9 @@ struct ResultRowView: View {
 
             if isSelected && !isDeleting {
                 HStack(spacing: 6) {
-                    ActionBadge(icon: "delete.left", label: "Delete", color: .red)
-                    ActionBadge(icon: "return", label: "Open")
-                    ActionBadge(icon: "space", label: "Preview")
+                    ActionBadge(icon: "delete.left", label: "Delete", color: .red, showLabel: !isPreviewOpen)
+                    ActionBadge(icon: "return", label: "Open", showLabel: !isPreviewOpen)
+                    ActionBadge(icon: "space", label: "Preview", showLabel: !isPreviewOpen)
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
@@ -177,16 +178,24 @@ struct ActionBadge: View {
     let icon: String
     let label: String
     var color: Color = .secondary
+    var showLabel: Bool = true
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: showLabel ? 3 : 0) {
             Image(systemName: icon)
                 .font(.system(size: 9, weight: .bold))
-            Text(label)
-                .font(.system(size: 9, weight: .bold, design: .rounded))
+
+            if showLabel {
+                Text(label)
+                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.85).combined(with: .opacity),
+                        removal: .scale(scale: 0.85).combined(with: .opacity)
+                    ))
+            }
         }
         .foregroundColor(color.opacity(0.85))
-        .padding(.horizontal, 6)
+        .padding(.horizontal, showLabel ? 6 : 5)
         .padding(.vertical, 3)
         .background(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
@@ -196,6 +205,8 @@ struct ActionBadge: View {
                         .stroke(color.opacity(0.20), lineWidth: 0.5)
                 )
         )
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .animation(.spring(response: 0.28, dampingFraction: 0.75), value: showLabel)
     }
 }
 
