@@ -16,10 +16,10 @@ struct PreviewView: View {
             case .image:
                 ImagePreviewView(url: result.url)
                     .id(result.url)
-            case .code:
+            case .code, .document:
                 CodePreviewView(url: result.url)
                     .id(result.url)
-            case .file, .document, .archive, .audio, .video:
+            case .file, .archive, .audio, .video:
                 FileContextPreviewView(url: result.url)
                     .id(result.url)
             }
@@ -434,7 +434,7 @@ func buildTree(at root: URL, depth: Int, maxDepth: Int, maxChildren: Int) -> Tre
     var children: [TreeNode] = []
 
     if depth < actualMaxDepth,
-       let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: .skipsHiddenFiles) {
+       let contents = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey], options: []) {
         let sorted = contents.sorted { $0.lastPathComponent < $1.lastPathComponent }
         for item in sorted.prefix(actualMaxChildren) {
             let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
@@ -467,7 +467,7 @@ func computeRecursiveStats(at root: URL) -> (size: Int64, fileCount: Int, dirCou
     guard let enumerator = fm.enumerator(
         at: root,
         includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
-        options: [.skipsHiddenFiles],
+        options: [],
         errorHandler: nil
     ) else { return (0, 0, 0) }
 
