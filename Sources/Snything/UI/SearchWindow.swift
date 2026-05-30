@@ -54,6 +54,8 @@ final class SearchWindowController: NSWindowController {
         window.center()
         NSApp.activate(ignoringOtherApps: true)
 
+        NotificationCenter.default.post(name: .snythingWindowShown, object: nil)
+
         let layer = window.contentView?.layer
 
         // Initial state: invisible, smaller, and slightly shifted down

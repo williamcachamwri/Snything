@@ -35,6 +35,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var deletingClipboardID: String? = nil
     @Published var shouldAutoScroll: Bool = false
     @Published var chordModeActive: Bool = false
+    @Published var chordSequence: [Int] = []
 
     private let engine = FastSearchEngine.shared
     private var chordTimer: Timer?
@@ -334,48 +335,66 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     // MARK: - Chord Shortcuts
 
     func enterChordMode() {
-        if chordModeActive {
-            // Already in chord mode → resolve to Files
-            resolveChord(keyCode: SettingsManager.shared.tabShortcutFiles)
-            return
-        }
         chordModeActive = true
+        chordSequence = []
         chordTimer?.invalidate()
-        chordTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+        chordTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
             self?.chordModeActive = false
+            self?.chordSequence = []
         }
     }
 
     func cancelChord() {
         chordModeActive = false
+        chordSequence = []
         chordTimer?.invalidate()
         chordTimer = nil
     }
 
-    func resolveChord(keyCode: Int) {
+    func appendChordKey(_ keyCode: Int) {
+        guard chordModeActive else { return }
+        chordSequence.append(keyCode)
         let settings = SettingsManager.shared
-        chordModeActive = false
-        chordTimer?.invalidate()
-        chordTimer = nil
+        let appsSeq = settings.tabShortcutApplications
+        let clipSeq = settings.tabShortcutClipboard
 
-        if keyCode == settings.tabShortcutFiles {
-            if showingApplications || showingClipboard {
-                showRecents()
-            }
-            return
-        }
-        if keyCode == settings.tabShortcutApplications {
+        // Check full match
+        if chordSequence == appsSeq {
+            chordModeActive = false
+            chordSequence = []
+            chordTimer?.invalidate()
+            chordTimer = nil
             if !showingApplications {
                 showApplications()
                 performSearch(query: "")
             }
             return
         }
-        if keyCode == settings.tabShortcutClipboard {
+        if chordSequence == clipSeq {
+            chordModeActive = false
+            chordSequence = []
+            chordTimer?.invalidate()
+            chordTimer = nil
             if !showingClipboard {
                 showClipboardHistory()
             }
             return
+        }
+
+        // Check prefix match
+        let appsPrefix = appsSeq.prefix(chordSequence.count)
+        let clipPrefix = clipSeq.prefix(chordSequence.count)
+        if chordSequence != Array(appsPrefix) && chordSequence != Array(clipPrefix) {
+            // No prefix match → cancel
+            cancelChord()
+            return
+        }
+
+        // Prefix match → extend timer
+        chordTimer?.invalidate()
+        chordTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: false) { [weak self] _ in
+            self?.chordModeActive = false
+            self?.chordSequence = []
         }
     }
 

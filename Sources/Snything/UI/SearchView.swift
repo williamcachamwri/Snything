@@ -49,9 +49,9 @@ struct SearchView: View {
             setupKeyboardMonitor()
             coordinator.showRecents()
             startRecentsTimer()
-            // Listen for global hotkey chord trigger when window is visible
+            // Enter chord mode whenever the search window is shown
             NotificationCenter.default.addObserver(
-                forName: .snythingChordTriggered,
+                forName: .snythingWindowShown,
                 object: nil,
                 queue: .main
             ) { [weak coordinator] _ in
@@ -235,9 +235,9 @@ struct SearchView: View {
         KeyboardManager.shared.onKeyDown = { [weak coordinator] event in
             guard let coordinator = coordinator else { return false }
 
-            // Chord mode: any key resolves the chord
+            // Chord mode: append key to sequence
             if coordinator.chordModeActive {
-                coordinator.resolveChord(keyCode: Int(event.keyCode))
+                coordinator.appendChordKey(Int(event.keyCode))
                 return true
             }
 
@@ -306,36 +306,6 @@ struct SearchView: View {
                 NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
                 return true
             default:
-                let settings = SettingsManager.shared
-                let code = Int(event.keyCode)
-                if event.modifierFlags.contains(.command) {
-                    // Ignore bare modifier-only keys
-                    let isBareModifier = code == 54 || code == 55 || code == 56 || code == 58 ||
-                                         code == 59 || code == 60 || code == 61 || code == 62
-                    if !isBareModifier {
-                        if code == settings.tabShortcutFiles {
-                            coordinator.enterChordMode()
-                            return true
-                        } else if code == settings.tabShortcutApplications {
-                            if !coordinator.showingApplications {
-                                self.query = ""
-                                self.stopRecentsTimer()
-                                self.stopClipboardTimer()
-                                coordinator.showApplications()
-                                coordinator.performSearch(query: "")
-                            }
-                            return true
-                        } else if code == settings.tabShortcutClipboard {
-                            if !coordinator.showingClipboard {
-                                self.query = ""
-                                self.stopRecentsTimer()
-                                coordinator.showClipboardHistory()
-                                self.startClipboardTimer()
-                            }
-                            return true
-                        }
-                    }
-                }
                 if !self.isSearchFocused && event.characters?.count == 1 {
                     self.query += event.characters!
                     self.isSearchFocused = true

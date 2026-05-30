@@ -45,15 +45,40 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         didSet { objectWillChange.send() }
     }
 
-    // Tab shortcut chord keys (after Cmd+Space prefix)
-    @AppStorage("snything.tabShortcutFiles") var tabShortcutFiles: Int = 49 { // Space = chord trigger → Files
+    // Tab shortcut chord sequences (2-3 keys after global hotkey prefix)
+    @AppStorage("snything.tabShortcutApplicationsJSON") var tabShortcutApplicationsJSON: String = "[49,0]" {
         didSet { objectWillChange.send() }
     }
-    @AppStorage("snything.tabShortcutApplications") var tabShortcutApplications: Int = 0 { // A
+    @AppStorage("snything.tabShortcutClipboardJSON") var tabShortcutClipboardJSON: String = "[49,8]" {
         didSet { objectWillChange.send() }
     }
-    @AppStorage("snything.tabShortcutClipboard") var tabShortcutClipboard: Int = 8 { // C
-        didSet { objectWillChange.send() }
+
+    var tabShortcutApplications: [Int] {
+        get {
+            guard let data = tabShortcutApplicationsJSON.data(using: .utf8),
+                  let arr = try? JSONDecoder().decode([Int].self, from: data) else { return [49, 0] }
+            return arr
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let str = String(data: data, encoding: .utf8) {
+                tabShortcutApplicationsJSON = str
+            }
+        }
+    }
+
+    var tabShortcutClipboard: [Int] {
+        get {
+            guard let data = tabShortcutClipboardJSON.data(using: .utf8),
+                  let arr = try? JSONDecoder().decode([Int].self, from: data) else { return [49, 8] }
+            return arr
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue),
+               let str = String(data: data, encoding: .utf8) {
+                tabShortcutClipboardJSON = str
+            }
+        }
     }
 
     var hotkeyModifiersUInt32: UInt32 {
@@ -74,7 +99,6 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
     }
 
     private init() {
-        // Sync launch at login on init
         syncLaunchAtLogin()
     }
 
@@ -98,6 +122,8 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         hotkeyShift = false
         hotkeyOption = false
         hotkeyCtrl = false
+        tabShortcutApplicationsJSON = "[49,0]"
+        tabShortcutClipboardJSON = "[49,8]"
         scopesString = "/Applications,/Users,/opt,/usr/local,Library"
     }
 

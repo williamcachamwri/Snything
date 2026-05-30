@@ -259,6 +259,8 @@ struct AboutSettingsView: View {
 struct HotkeySettingsView: View {
     @StateObject private var settings = SettingsManager.shared
     @State private var listeningFor: String? = nil
+    @State private var capturedKeys: [Int] = []
+    @State private var confirmTimer: Timer?
 
     private let keyNames: [Int: String] = [
         0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
@@ -284,7 +286,7 @@ struct HotkeySettingsView: View {
                     display: hotkeyDisplay,
                     isListening: listeningFor == "global",
                     onTapCapture: { listeningFor = "global" },
-                    onTapCancel: { listeningFor = nil }
+                    onTapCancel: { cancelCapture() }
                 )
 
                 Text("Modifiers")
@@ -326,44 +328,48 @@ struct HotkeySettingsView: View {
                     .background(Color.white.opacity(0.06))
                     .padding(.vertical, 4)
 
-                Text("Tab Shortcuts")
+                Text("Tab Chord Shortcuts")
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundColor(.primary)
 
                 KeyCaptureRow(
-                    icon: "magnifyingglass",
-                    title: "Files",
-                    subtitle: "Switch to Files / Recents",
-                    display: "Cmd + \(keyName(for: settings.tabShortcutFiles))",
-                    isListening: listeningFor == "files",
-                    onTapCapture: { listeningFor = "files" },
-                    onTapCancel: { listeningFor = nil }
-                )
-                KeyCaptureRow(
                     icon: "square.grid.2x2",
                     title: "Applications",
-                    subtitle: "Switch to Applications",
-                    display: "Cmd + \(keyName(for: settings.tabShortcutApplications))",
+                    subtitle: "Chord after global hotkey",
+                    sequence: settings.tabShortcutApplications,
                     isListening: listeningFor == "apps",
-                    onTapCapture: { listeningFor = "apps" },
-                    onTapCancel: { listeningFor = nil }
+                    onTapCapture: { startCapture(for: "apps") },
+                    onTapCancel: { cancelCapture() }
                 )
                 KeyCaptureRow(
                     icon: "doc.on.clipboard",
                     title: "Clipboard",
-                    subtitle: "Switch to Clipboard History",
-                    display: "Cmd + \(keyName(for: settings.tabShortcutClipboard))",
+                    subtitle: "Chord after global hotkey",
+                    sequence: settings.tabShortcutClipboard,
                     isListening: listeningFor == "clipboard",
-                    onTapCapture: { listeningFor = "clipboard" },
-                    onTapCancel: { listeningFor = nil }
+                    onTapCapture: { startCapture(for: "clipboard") },
+                    onTapCancel: { cancelCapture() }
                 )
+
+                if listeningFor == "apps" || listeningFor == "clipboard" {
+                    Text("Press up to 3 keys. Enter to confirm. Esc to cancel.")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundColor(.secondary.opacity(0.6))
+                }
             }
         }
         .background(
             KeyEventListener(isActive: listeningFor != nil) { event in
                 let code = Int(event.keyCode)
-                switch listeningFor {
-                case "global":
+                if code == 53 { // Esc
+                    cancelCapture()
+                    return
+                }
+                if code == 36 { // Return / Enter
+                    confirmCapture()
+                    return
+                }
+                if listeningFor == "global" {
                     let mods = event.modifierFlags
                     settings.hotkeyCmd = mods.contains(.command)
                     settings.hotkeyShift = mods.contains(.shift)
@@ -371,18 +377,63 @@ struct HotkeySettingsView: View {
                     settings.hotkeyCtrl = mods.contains(.control)
                     settings.hotkeyKeyCode = code
                     NotificationCenter.default.post(name: .snythingReRegisterHotkey, object: nil)
-                case "files":
-                    settings.tabShortcutFiles = code
-                case "apps":
-                    settings.tabShortcutApplications = code
-                case "clipboard":
-                    settings.tabShortcutClipboard = code
-                default:
-                    break
+                    listeningFor = nil
+                    return
                 }
-                listeningFor = nil
+                // Tab chord capture
+                if capturedKeys.count >= 3 {
+                    return
+                }
+                capturedKeys.append(code)
+                resetConfirmTimer()
             }
         )
+    }
+
+    private func startCapture(for target: String) {
+        listeningFor = target
+        capturedKeys = []
+        resetConfirmTimer()
+    }
+
+    private func cancelCapture() {
+        listeningFor = nil
+        capturedKeys = []
+        confirmTimer?.invalidate()
+        confirmTimer = nil
+    }
+
+    private func confirmCapture() {
+        guard let target = listeningFor else { return }
+        switch target {
+        case "apps":
+            if !capturedKeys.isEmpty {
+                settings.tabShortcutApplications = capturedKeys
+            }
+        case "clipboard":
+            if !capturedKeys.isEmpty {
+                settings.tabShortcutClipboard = capturedKeys
+            }
+        default:
+            break
+        }
+        listeningFor = nil
+        capturedKeys = []
+        confirmTimer?.invalidate()
+        confirmTimer = nil
+    }
+
+    private func resetConfirmTimer() {
+        confirmTimer?.invalidate()
+        confirmTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
+            confirmCapture()
+        }
+    }
+
+    private func formatSequence(_ seq: [Int]) -> String {
+        if seq.isEmpty { return "..." }
+        let labels = seq.map { keyNames[$0] ?? "Key \($0)" }
+        return labels.joined(separator: " + ")
     }
 
     private func keyName(for code: Int) -> String {
@@ -491,7 +542,7 @@ struct KeyCaptureRow: View {
     let icon: String
     let title: String
     let subtitle: String
-    let display: String
+    let sequence: [Int]
     let isListening: Bool
     let onTapCapture: () -> Void
     let onTapCancel: () -> Void
@@ -518,21 +569,17 @@ struct KeyCaptureRow: View {
 
             HStack(spacing: 8) {
                 HStack(spacing: 4) {
-                    Image(systemName: "command")
-                        .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(isListening ? .accentColor.opacity(0.7) : .secondary.opacity(0.5))
-                    Text("+")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(isListening ? .accentColor.opacity(0.6) : .secondary.opacity(0.4))
-
                     if isListening {
                         Circle()
                             .fill(Color.accentColor)
                             .frame(width: 5, height: 5)
                             .opacity(pulse ? 0.3 : 1.0)
+                        Text("Listening...")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.accentColor)
                     } else {
-                        Text(display.components(separatedBy: "+ ").last ?? "?")
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        Text(sequenceDisplay)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
                             .foregroundColor(.primary)
                     }
                 }
@@ -586,6 +633,24 @@ struct KeyCaptureRow: View {
             }
         }
     }
+
+    private var sequenceDisplay: String {
+        let keyNames: [Int: String] = [
+            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
+            11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T",
+            31: "O", 32: "U", 34: "I", 35: "P", 37: "L", 38: "J", 39: "K", 40: "N", 42: "M",
+            45: ".", 46: "/", 43: ",", 41: ";", 27: "'", 50: "`", 33: "[", 30: "]", 44: "\\",
+            49: "Space", 53: "Esc",
+            122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
+            98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12",
+            36: "Return", 48: "Tab", 51: "Delete",
+            123: "Left", 124: "Right", 125: "Down", 126: "Up",
+            115: "Home", 119: "End", 116: "PgUp", 121: "PgDn"
+        ]
+        if sequence.isEmpty { return "..." }
+        let labels = sequence.map { keyNames[$0] ?? "Key \($0)" }
+        return labels.joined(separator: " + ")
+    }
 }
 
 struct KeyEventListener: View {
@@ -599,7 +664,7 @@ struct KeyEventListener: View {
                 if active {
                     NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                         guard isActive else { return event }
-                        // Ignore bare modifiers and ESC during capture
+                        // Ignore bare modifiers
                         let isBareModifier = event.keyCode == 54 || event.keyCode == 55 ||
                                               event.keyCode == 56 || event.keyCode == 58 ||
                                               event.keyCode == 59 || event.keyCode == 60 ||

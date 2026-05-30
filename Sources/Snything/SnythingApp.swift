@@ -104,12 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         GlobalHotkeyManager.shared.unregister()
         GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
             guard let self = self else { return }
-            // If window is visible, treat global hotkey as chord entry (don't toggle)
-            if self.searchWindowController?.window?.isVisible == true {
-                NotificationCenter.default.post(name: .snythingChordTriggered, object: nil)
-            } else {
-                self.searchWindowController?.toggleVisibility()
-            }
+            self.searchWindowController?.toggleVisibility()
         }
     }
 
@@ -324,12 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         searchWindowController?.showWindow(nil)
 
         GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
-            guard let self = self else { return }
-            if self.searchWindowController?.window?.isVisible == true {
-                NotificationCenter.default.post(name: .snythingChordTriggered, object: nil)
-            } else {
-                self.searchWindowController?.toggleVisibility()
-            }
+            self?.searchWindowController?.toggleVisibility()
         }
     }
 
@@ -388,4 +378,5 @@ extension Notification.Name {
     static let snythingReRegisterHotkey = Notification.Name("snythingReRegisterHotkey")
     static let snythingResetToFiles = Notification.Name("snythingResetToFiles")
     static let snythingChordTriggered = Notification.Name("snythingChordTriggered")
+    static let snythingWindowShown = Notification.Name("snythingWindowShown")
 }
