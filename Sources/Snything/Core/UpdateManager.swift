@@ -155,13 +155,4 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     func updaterWillRelaunchApplication(_ updater: SPUUpdater) {
         statusMessage = "Relaunching..."
     }
-
-    // Disable EdDSA verification for dev builds (Apple Code Signing only)
-    func updater(
-        _ updater: SPUUpdater,
-        validationDidUpdateValidationState state: SPUUpdateValidationState,
-        forItem item: SUAppcastItem
-    ) {
-        print("[Sparkle] Validation state: \(state)")
-    }
 }
