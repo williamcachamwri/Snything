@@ -18,7 +18,10 @@ enum ImageOCRService {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
-        request.recognitionLanguages = ["en", "vi"]
+        request.recognitionLanguages = [
+            "en-US", "zh-Hans", "zh-Hant", "ja", "ko", "es", "fr",
+            "de", "it", "pt", "ru", "ar", "hi", "th", "vi"
+        ]
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 
