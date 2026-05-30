@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import ServiceManagement
+import Carbon
 
 final class SettingsManager: ObservableObject, @unchecked Sendable {
     static let shared = SettingsManager()
@@ -25,6 +26,32 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
     }
     @AppStorage("snything.autoCheckUpdates") var autoCheckUpdates: Bool = true {
         didSet { objectWillChange.send() }
+    }
+
+    // Hotkey config
+    @AppStorage("snything.hotkeyKeyCode") var hotkeyKeyCode: Int = 49 {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyCmd") var hotkeyCmd: Bool = true {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyShift") var hotkeyShift: Bool = false {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyOption") var hotkeyOption: Bool = false {
+        didSet { objectWillChange.send() }
+    }
+    @AppStorage("snything.hotkeyCtrl") var hotkeyCtrl: Bool = false {
+        didSet { objectWillChange.send() }
+    }
+
+    var hotkeyModifiersUInt32: UInt32 {
+        var mods: UInt32 = 0
+        if hotkeyCmd { mods |= UInt32(cmdKey) }
+        if hotkeyShift { mods |= UInt32(shiftKey) }
+        if hotkeyOption { mods |= UInt32(optionKey) }
+        if hotkeyCtrl { mods |= UInt32(controlKey) }
+        return mods
     }
 
     // Scopes stored as comma-separated paths
@@ -55,6 +82,11 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         showHiddenFiles = false
         showPreviewOnSelect = false
         launchAtLogin = false
+        hotkeyKeyCode = 49
+        hotkeyCmd = true
+        hotkeyShift = false
+        hotkeyOption = false
+        hotkeyCtrl = false
         scopesString = "/Applications,/Users,/opt,/usr/local,Library"
     }
 

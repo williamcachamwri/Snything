@@ -32,6 +32,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var clipboardPreviewItem: ClipboardItem? = nil
 
     @Published var deletingResultID: String? = nil
+    @Published var shouldAutoScroll: Bool = false
 
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared
@@ -223,6 +224,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             updateClipboardPreview()
         } else {
             guard !results.isEmpty else { return }
+            shouldAutoScroll = true
             selectedIndex = (selectedIndex + 1) % results.count
             keyboardFocusedIndex = selectedIndex
             updatePreview()
@@ -237,6 +239,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             updateClipboardPreview()
         } else {
             guard !results.isEmpty else { return }
+            shouldAutoScroll = true
             selectedIndex = (selectedIndex - 1 + results.count) % results.count
             keyboardFocusedIndex = selectedIndex
             updatePreview()

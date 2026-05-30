@@ -35,6 +35,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: .snythingHideWindow,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleReRegisterHotkey),
+            name: .snythingReRegisterHotkey,
+            object: nil
+        )
 
         let hasCompleted = UserDefaults.standard.bool(forKey: hasCompletedOnboardingKey)
         let hasShownSplash = UserDefaults.standard.bool(forKey: hasShownSplashKey)
@@ -92,6 +98,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSearch() {
         searchWindowController?.toggleVisibility()
+    }
+
+    @objc private func handleReRegisterHotkey() {
+        GlobalHotkeyManager.shared.unregister()
+        GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
+            self?.searchWindowController?.toggleVisibility()
+        }
     }
 
     // MARK: - Onboarding
@@ -340,4 +353,5 @@ final class LaunchAtLoginManager: ObservableObject {
 
 extension Notification.Name {
     static let snythingHideWindow = Notification.Name("snythingHideWindow")
+    static let snythingReRegisterHotkey = Notification.Name("snythingReRegisterHotkey")
 }

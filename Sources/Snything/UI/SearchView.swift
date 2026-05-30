@@ -284,6 +284,40 @@ struct SearchView: View {
                 coordinator.cancel()
                 NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
                 return true
+            case 0: // A
+                if event.modifierFlags.contains(.command) {
+                    if !coordinator.showingApplications {
+                        query = ""
+                        stopRecentsTimer()
+                        stopClipboardTimer()
+                        coordinator.showApplications()
+                        coordinator.performSearch(query: "")
+                    }
+                    return true
+                }
+                return false
+            case 8: // C
+                if event.modifierFlags.contains(.command) {
+                    if !coordinator.showingClipboard {
+                        query = ""
+                        stopRecentsTimer()
+                        coordinator.showClipboardHistory()
+                        startClipboardTimer()
+                    }
+                    return true
+                }
+                return false
+            case 3: // F
+                if event.modifierFlags.contains(.command) {
+                    if coordinator.showingApplications || coordinator.showingClipboard {
+                        query = ""
+                        stopClipboardTimer()
+                        coordinator.showRecents()
+                        startRecentsTimer()
+                    }
+                    return true
+                }
+                return false
             default:
                 if !self.isSearchFocused && event.characters?.count == 1 {
                     self.query += event.characters!

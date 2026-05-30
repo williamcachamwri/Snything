@@ -53,10 +53,10 @@ struct ResultListView: View {
             }
             .background(Color.clear)
             .onChange(of: coordinator.keyboardFocusedIndex) { _, newValue in
-                if coordinator.results.indices.contains(newValue) {
-                    withAnimation(.easeOut(duration: 0.12)) {
-                        proxy.scrollTo(coordinator.results[newValue].id, anchor: .center)
-                    }
+                guard coordinator.shouldAutoScroll, coordinator.results.indices.contains(newValue) else { return }
+                coordinator.shouldAutoScroll = false
+                withAnimation(.easeOut(duration: 0.12)) {
+                    proxy.scrollTo(coordinator.results[newValue].id)
                 }
             }
         }

@@ -34,8 +34,9 @@ final class GlobalHotkeyManager {
 
         let hotKeyID = EventHotKeyID(signature: fourCharCode("SNYT"), id: 1)
 
-        let keyCode = UInt32(kVK_Space)
-        let modifiers = UInt32(cmdKey)
+        let settings = SettingsManager.shared
+        let keyCode = UInt32(settings.hotkeyKeyCode)
+        let modifiers = settings.hotkeyModifiersUInt32
 
         let status = RegisterEventHotKey(
             keyCode,
