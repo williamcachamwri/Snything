@@ -137,6 +137,33 @@ jobs:
             hdiutil create -srcfolder ".build/Snything.app" -volname "Snything" -fs HFS+ -format UDZO "Snything-Release.dmg"
           fi
 
+      - name: Sign DMG with Sparkle EdDSA
+        id: sparkle_sign
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set +e
+          SIGN_UPDATE=$(find .build -name "sign_update" -type f | head -1)
+          if [ -z "$SIGN_UPDATE" ]; then
+            SIGN_UPDATE=$(find /Users/runner -name "sign_update" -type f 2>/dev/null | head -1)
+          fi
+          if [ -n "$SIGN_UPDATE" ] && [ -n "$SPARKLE_PRIVATE_KEY" ]; then
+            echo "$SPARKLE_PRIVATE_KEY" > /tmp/sparkle_private_key.pem
+            SIG=$($SIGN_UPDATE "Snything-Release.dmg" /tmp/sparkle_private_key.pem 2>/dev/null | grep "sparkle:edSignature=" | sed 's/.*sparkle:edSignature="\([^"]*\)".*/\1/')
+            LEN=$($SIGN_UPDATE "Snything-Release.dmg" /tmp/sparkle_private_key.pem 2>/dev/null | grep "length=" | sed 's/.*length="\([^"]*\)".*/\1/')
+            if [ -n "$SIG" ]; then
+              echo "signature=$SIG" >> $GITHUB_OUTPUT
+              echo "length=$LEN" >> $GITHUB_OUTPUT
+              echo "has_sig=true" >> $GITHUB_OUTPUT
+              echo "Sparkle signature generated"
+              rm -f /tmp/sparkle_private_key.pem
+              exit 0
+            fi
+            rm -f /tmp/sparkle_private_key.pem
+          fi
+          echo "has_sig=false" >> $GITHUB_OUTPUT
+          echo "Warning: Could not generate Sparkle signature"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -155,16 +182,34 @@ jobs:
             RELEASE_NOTES="<ul><li>Bug fixes and improvements.</li></ul>"
           fi
 
+          HAS_SIG="${{ steps.sparkle_sign.outputs.has_sig }}"
+          SIG="${{ steps.sparkle_sign.outputs.signature }}"
+          LEN="${{ steps.sparkle_sign.outputs.length }}"
+
+          if [ "$HAS_SIG" = "true" ] && [ -n "$SIG" ]; then
+            SIG_ATTR=" sparkle:edSignature=\"$SIG\""
+            LEN_ATTR="$LEN"
+          else
+            SIG_ATTR=""
+            LEN_ATTR="0"
+          fi
+
           cat > /tmp/new_item.xml << EOF
               <item>
                 <title>Version $VERSION</title>
+                <sparkle:version>${VERSION##*.}</sparkle:version>
+                <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+                <pubDate>$PUB_DATE</pubDate>
                 <description><![CDATA[
                   <h2>What's New</h2>
                   $RELEASE_NOTES
                 ]]></description>
-                <pubDate>$PUB_DATE</pubDate>
-                <enclosure url="https://github.com/${{ github.repository }}/releases/download/v$VERSION/Snything-Release.dmg" sparkle:version="${VERSION##*.}" sparkle:shortVersionString="$VERSION" length="0" type="application/octet-stream" sparkle:edSignature=""/>
-                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+                <enclosure
+                  url="https://github.com/${{ github.repository }}/releases/download/v$VERSION/Snything-Release.dmg"
+                  $SIG_ATTR
+                  length="$LEN_ATTR"
+                  type="application/octet-stream"/>
               </item>
           EOF
 
