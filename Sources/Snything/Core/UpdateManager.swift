@@ -17,6 +17,16 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     private override init() {
         super.init()
 
+        // Sparkle requires a valid .app bundle with CFBundleIdentifier and CFBundleVersion.
+        // SPM debug builds (swift run / Xcode DerivedData) lack these keys.
+        guard Bundle.main.bundleIdentifier != nil,
+              Bundle.main.infoDictionary?["CFBundleVersion"] != nil else {
+            print("[Sparkle] Bundle missing CFBundleIdentifier or CFBundleVersion — updater disabled")
+            print("[Sparkle] Build .app bundle with .github/build_app.sh to enable updates")
+            isStarted = false
+            return
+        }
+
         updaterController = SPUStandardUpdaterController(
             startingUpdater: false,
             updaterDelegate: self,
@@ -26,14 +36,12 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         updaterController.updater.automaticallyChecksForUpdates = false
         updaterController.updater.automaticallyDownloadsUpdates = false
 
-        // Try to start updater immediately
         do {
             try updaterController.startUpdater()
             isStarted = true
             print("[Sparkle] Updater started successfully")
         } catch {
             print("[Sparkle] Failed to start updater: \(error)")
-            print("[Sparkle] This is expected in SPM debug mode (no .app bundle)")
             isStarted = false
         }
     }
