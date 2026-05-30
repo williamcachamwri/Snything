@@ -370,8 +370,7 @@ struct TreeNodeView: View {
             }
         )
         .onDrag {
-            let provider = NSItemProvider(object: node.url as NSURL)
-            provider.suggestedName = node.name
+            let provider = NSItemProvider(contentsOf: node.url) ?? NSItemProvider()
             return provider
         }
         .contextMenu {
