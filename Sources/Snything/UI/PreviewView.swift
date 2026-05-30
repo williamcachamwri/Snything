@@ -845,74 +845,73 @@ struct ImagePreviewView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ZStack {
-                Color.black.opacity(0.15)
+            // Image area only — GeometryReader measures just this region
+            GeometryReader { geo in
+                ZStack {
+                    Color.black.opacity(0.15)
 
-                GeometryReader { geo in
-                    ZStack {
-                        if let nsImage {
-                            Image(nsImage: nsImage)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .padding(12)
-                        } else if !isLoading {
-                            VStack(spacing: 8) {
-                                Image(systemName: "photo")
-                                    .font(.system(size: 32))
-                                    .foregroundColor(.secondary.opacity(0.4))
-                                Text("Unable to load image")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-
-                        if showOCR, let nsImage {
-                            ocrOverlay(imageSize: nsImage.size, containerSize: geo.size)
+                    if let nsImage {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .padding(12)
+                    } else if !isLoading {
+                        VStack(spacing: 8) {
+                            Image(systemName: "photo")
+                                .font(.system(size: 32))
+                                .foregroundColor(.secondary.opacity(0.4))
+                            Text("Unable to load image")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
                         }
                     }
-                }
 
-                // OCR toggle button
-                if !ocrTexts.isEmpty {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            VStack(spacing: 6) {
-                                Button {
-                                    withAnimation(.easeOut(duration: 0.15)) {
-                                        showOCR.toggle()
+                    if showOCR, let nsImage {
+                        ocrOverlay(imageSize: nsImage.size, containerSize: geo.size)
+                    }
+
+                    // OCR toggle buttons
+                    if !ocrTexts.isEmpty {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                VStack(spacing: 6) {
+                                    Button {
+                                        withAnimation(.easeOut(duration: 0.15)) {
+                                            showOCR.toggle()
+                                        }
+                                    } label: {
+                                        Image(systemName: showOCR ? "text.viewfinder" : "text.viewfinder")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundColor(showOCR ? .accentColor : .white)
+                                            .padding(8)
+                                            .background(
+                                                Circle()
+                                                    .fill(Color.black.opacity(0.5))
+                                            )
                                     }
-                                } label: {
-                                    Image(systemName: showOCR ? "text.viewfinder" : "text.viewfinder")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(showOCR ? .accentColor : .white)
-                                        .padding(8)
-                                        .background(
-                                            Circle()
-                                                .fill(Color.black.opacity(0.5))
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                                .help(showOCR ? "Hide OCR" : "Show OCR text")
+                                    .buttonStyle(.plain)
+                                    .help(showOCR ? "Hide OCR" : "Show OCR text")
 
-                                Button {
-                                    showOCRPanel = true
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .padding(8)
-                                        .background(
-                                            Circle()
-                                                .fill(Color.black.opacity(0.5))
-                                        )
+                                    Button {
+                                        showOCRPanel = true
+                                    } label: {
+                                        Image(systemName: "doc.on.doc")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.white)
+                                            .padding(8)
+                                            .background(
+                                                Circle()
+                                                    .fill(Color.black.opacity(0.5))
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Copy / select text")
                                 }
-                                .buttonStyle(.plain)
-                                .help("Copy / select text")
+                                .padding(12)
                             }
-                            .padding(12)
+                            Spacer()
                         }
-                        Spacer()
                     }
                 }
             }
