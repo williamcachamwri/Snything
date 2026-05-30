@@ -7,13 +7,33 @@
     <language>en</language>
 
     <item>
+      <title>Version 1.0.92</title>
+      <sparkle:version>92</sparkle:version>
+      <sparkle:shortVersionString>1.0.92</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <pubDate>Sat, 30 May 2026 16:30:00 +0000</pubDate>
+      <description><![CDATA[
+        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
+        <h3>What's New</h3>
+        <ul>
+          <li>Fix CFBundleVersion to match sparkle:version for proper update detection</li>
+          <li>Sparkle auto-update with correct build number</li>
+        </ul>
+      ]]></description>
+      <enclosure
+        url="https://github.com/williamcachamwri/Snything/releases/download/v1.0.92/Snything-Release.dmg"
+        sparkle:edSignature="PqwvvzH8ntYfOqWYq8bXv4WIaKQTf06nsHOhsvZxjxLkabROOrDLExipVfa15m4jsaBJTuYr0wKkCio5rwBYCg=="
+        length="5568385"
+        type="application/octet-stream"/>
+    </item>
+
+    <item>
       <title>Version 1.0.91</title>
       <sparkle:version>91</sparkle:version>
       <sparkle:shortVersionString>1.0.91</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <pubDate>Sat, 30 May 2026 16:20:00 +0000</pubDate>
       <description><![CDATA[
-        <style>:root { color-scheme: light dark; } body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; line-height: 1.5; padding: 8px 16px; } h3 { font-size: 14px; margin: 12px 0 6px; } ul { padding-left: 20px; margin: 4px 0; } li { margin: 3px 0; }</style>
         <h3>What's New</h3>
         <ul>
           <li>Sparkle auto-update with EdDSA signature verification</li>

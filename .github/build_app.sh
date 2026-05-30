@@ -11,9 +11,11 @@ BUNDLE_ID="com.snything.mac"
 BUILD_DIR="${PROJECT_ROOT}/.build"
 RELEASE_BIN="${BUILD_DIR}/release/${APP_NAME}"
 APP_BUNDLE="${BUILD_DIR}/${APP_NAME}.app"
-APP_VERSION="${APP_VERSION:-1.0.1}"
+APP_VERSION="${APP_VERSION:-1.0.92}"
+BUILD_NUMBER="${APP_VERSION##*.}"
 
 echo "Building release binary..."
+echo "Version: ${APP_VERSION}, Build: ${BUILD_NUMBER}"
 swift build -c release
 
 echo "Creating .app bundle..."
@@ -50,7 +52,7 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <key>CFBundleShortVersionString</key>
     <string>${APP_VERSION}</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>${BUILD_NUMBER}</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>LSMinimumSystemVersion</key>
