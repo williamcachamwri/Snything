@@ -12,6 +12,7 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
     @Published var statusMessage: String?
 
     private var updaterController: SPUStandardUpdaterController!
+    private var isStarted = false
 
     private override init() {
         super.init()
@@ -22,21 +23,45 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
             userDriverDelegate: nil
         )
 
-        // Configure Sparkle updater
-        updaterController.updater.automaticallyChecksForUpdates = SettingsManager.shared.autoCheckUpdates
+        updaterController.updater.automaticallyChecksForUpdates = false
         updaterController.updater.automaticallyDownloadsUpdates = false
-        updaterController.updater.updateCheckInterval = 24 * 60 * 60 // daily
+
+        // Try to start updater immediately
+        do {
+            try updaterController.startUpdater()
+            isStarted = true
+            print("[Sparkle] Updater started successfully")
+        } catch {
+            print("[Sparkle] Failed to start updater: \(error)")
+            print("[Sparkle] This is expected in SPM debug mode (no .app bundle)")
+            isStarted = false
+        }
     }
 
     // MARK: - Public API
 
     func startAutomaticChecks() {
-        updaterController.startUpdater()
+        guard isStarted else {
+            print("[Sparkle] Updater not started — skipping automatic checks")
+            return
+        }
+        updaterController.updater.automaticallyChecksForUpdates = SettingsManager.shared.autoCheckUpdates
+        updaterController.updater.updateCheckInterval = 24 * 60 * 60
     }
 
     /// Check for updates. If `showAnyway` is true, always show UI even if no update.
     func checkForUpdates(showAnyway: Bool = false) {
         guard !isChecking else { return }
+
+        guard isStarted else {
+            statusMessage = "Updates unavailable in debug mode. Build the .app bundle for Sparkle updates."
+            showAlert = true
+            alertVersion = "N/A"
+            alertReleaseNotes = "Sparkle updater requires a proper .app bundle.\n\nIn SPM debug builds, automatic updates are disabled.\nBuild with `.github/build_app.sh` to enable Sparkle."
+            ChangelogWindowController.shared.showAnimated()
+            return
+        }
+
         isChecking = true
         statusMessage = nil
 
@@ -45,14 +70,10 @@ final class UpdateManager: NSObject, ObservableObject, SPUUpdaterDelegate {
         } else {
             updaterController.updater.checkForUpdatesInBackground()
         }
-
-        // Sparkle handles the UI; we just track the check state briefly
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-            self?.isChecking = false
-        }
     }
 
     func installUpdate() {
+        guard isStarted else { return }
         updaterController.checkForUpdates(nil)
     }
 
