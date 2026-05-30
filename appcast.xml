@@ -5,6 +5,32 @@
     <link>https://github.com/williamcachamwri/Snything/releases</link>
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
+    <item>
+      <title>Version 1.0.90</title>
+      <description><![CDATA[
+        <h2>What is New</h2>
+        <!-- Auto-generated release notes for Snything -->
+
+## What's New
+
+This release includes **20 commits** with improvements to search, clipboard history, and the update experience.
+
+### ✨ Features
+
+- add EdDSA key + appcast.xml for Sparkle auto-update
+- integrate Sparkle framework + custom version format
+- video preview with zoom/pan + play controls + trackpad pinch
+- smoother toast panel + image zoom & pan in preview
+
+### 🐛 Bug Fixes
+
+- sparkle: switch appcast URL to GitHub Pages
+- build: add Spa
+      ]]></description>
+      <pubDate>Sat, 30 May 2026 15:46:21 +0000</pubDate>
+      <enclosure url="https://github.com/williamcachamwri/Snything/releases/download/v1.0.90/Snything-Release.dmg" sparkle:version="90" sparkle:shortVersionString="1.0.90" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    </item>
 
     <item>
       <title>Version 1.0.88</title>
