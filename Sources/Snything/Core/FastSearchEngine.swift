@@ -88,6 +88,11 @@ final class FastSearchEngine: @unchecked Sendable {
                     await self.runFindFilesystem(query: q, maxResults: maxResults)
                 }
 
+                // Thread 4: OCR content search (images containing text)
+                group.addTask {
+                    await self.runOCRSearch(query: q, maxResults: 50)
+                }
+
                 for await results in group {
                     if Task.isCancelled { break }
                     allResults.append(contentsOf: results)
@@ -266,6 +271,32 @@ final class FastSearchEngine: @unchecked Sendable {
                 kind: SearchResult.kind(from: url),
                 size: url.fileSize(), modifiedDate: url.modDate(),
                 relevanceScore: 1.0
+            ))
+        }
+        return results
+    }
+
+    // MARK: - OCR Content Search
+
+    private func runOCRSearch(query: String, maxResults: Int) async -> [SearchResult] {
+        let paths = OCRIndexManager.shared.pathsMatching(query: query)
+        let fm = FileManager.default
+        var results: [SearchResult] = []
+        results.reserveCapacity(min(paths.count, maxResults))
+
+        for path in paths.prefix(maxResults) {
+            guard !Task.isCancelled else { break }
+            guard fm.fileExists(atPath: path) else { continue }
+            let url = URL(fileURLWithPath: path)
+            results.append(SearchResult(
+                url: url,
+                name: url.lastPathComponent,
+                path: url.path,
+                kind: .image,
+                size: url.fileSize(),
+                modifiedDate: url.modDate(),
+                relevanceScore: 0.7, // Slightly lower than direct name matches
+                subtitle: "Image containing '\(query)'"
             ))
         }
         return results

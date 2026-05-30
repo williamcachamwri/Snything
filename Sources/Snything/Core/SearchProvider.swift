@@ -35,6 +35,7 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var deletingClipboardID: String? = nil
     @Published var shouldAutoScroll: Bool = false
     @Published var showActionPalette: Bool = false
+    @Published var calculatorResult: CalculatorResult? = nil
 
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared
@@ -122,6 +123,9 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             showPreview = false
             previewResult = nil
         }
+
+        // Trigger background OCR indexing on first open
+        OCRIndexManager.shared.startBackgroundIndex(for: SettingsManager.shared.searchScopes)
     }
 
     func showApplications() {
@@ -167,6 +171,13 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     func performSearch(query: String) {
         activeTask?.cancel()
         engine.cancel()
+
+        // Calculator / Converter
+        if !showingApplications, !showingClipboard {
+            calculatorResult = CalculatorService.evaluate(query)
+        } else {
+            calculatorResult = nil
+        }
 
         if showingApplications {
             // Always search in Applications mode (even empty query shows all apps)
@@ -268,6 +279,15 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             guard clipboardItems.indices.contains(selectedClipboardIndex) else { return }
             let item = clipboardItems[selectedClipboardIndex]
             clipboard.pasteToClipboard(item)
+            // Show toast after copy, then hide window
+            Task { @MainActor in
+                ToastManager.shared.show(
+                    icon: item.smartIcon,
+                    title: "Copied \(item.smartDisplayLabel)",
+                    subtitle: item.displayTitle.prefix(40) + (item.displayTitle.count > 40 ? "..." : ""),
+                    color: item.smartColor
+                )
+            }
             NotificationCenter.default.post(name: .snythingHideWindow, object: nil)
         } else {
             guard results.indices.contains(selectedIndex) else { return }

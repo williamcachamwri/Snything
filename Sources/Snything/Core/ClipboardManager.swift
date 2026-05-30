@@ -1,6 +1,5 @@
 import Foundation
 import AppKit
-import SwiftUI
 
 final class ClipboardManager {
     static let shared = ClipboardManager()
@@ -97,18 +96,6 @@ final class ClipboardManager {
             }
             let smart = SmartClipboardService.analyze(content: string, baseType: baseType)
 
-            // Show toast for smart detection
-            DispatchQueue.main.async {
-                if smart.type != .plainText {
-                    ToastManager.shared.show(
-                        icon: self.toastIcon(for: smart.type),
-                        title: "Copied \(smart.type == .code ? (smart.detectedLanguage?.capitalized ?? "Code") : smart.type.rawValue)",
-                        subtitle: string.prefix(40) + (string.count > 40 ? "..." : ""),
-                        color: self.toastColor(for: smart.type)
-                    )
-                }
-            }
-
             return ClipboardItem(
                 id: UUID().uuidString,
                 content: string,
@@ -165,38 +152,6 @@ final class ClipboardManager {
         }
 
         return nil
-    }
-
-    private func toastIcon(for type: SmartClipboardType) -> String {
-        switch type {
-        case .url: return "link"
-        case .email: return "envelope.fill"
-        case .phone: return "phone.fill"
-        case .hexColor, .rgbColor: return "paintpalette.fill"
-        case .json: return "curlybraces"
-        case .code: return "chevron.left.forwardslash.chevron.right"
-        case .filePath: return "doc.fill"
-        case .number: return "number"
-        case .command: return "terminal.fill"
-        case .markdown: return "doc.richtext"
-        case .plainText: return "doc.text"
-        }
-    }
-
-    private func toastColor(for type: SmartClipboardType) -> Color {
-        switch type {
-        case .url: return .blue
-        case .email: return .cyan
-        case .phone: return .green
-        case .hexColor, .rgbColor: return .pink
-        case .json: return .orange
-        case .code: return .purple
-        case .filePath: return .orange
-        case .number: return .teal
-        case .command: return .gray
-        case .markdown: return .indigo
-        case .plainText: return .secondary
-        }
     }
 
     private func persistImageData(_ data: Data, ext: String) -> String? {

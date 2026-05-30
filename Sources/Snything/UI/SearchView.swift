@@ -175,6 +175,11 @@ struct SearchView: View {
                     ResultListView(coordinator: coordinator, namespace: animationNamespace)
                 }
             } else {
+                if let calc = coordinator.calculatorResult {
+                    calculatorRow(calc)
+                        .padding(.bottom, 4)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 ResultListView(coordinator: coordinator, namespace: animationNamespace)
             }
         }
@@ -371,6 +376,59 @@ struct SearchView: View {
             coordinator.showApplications()
             coordinator.performSearch(query: "")
         }
+    }
+
+    private func calculatorRow(_ calc: CalculatorResult) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.teal.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: calc.type == .currencyConversion ? "dollarsign.circle" : (calc.type == .unitConversion ? "ruler" : "function"))
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.teal)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(calc.query)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .lineLimit(1)
+
+                Text(calc.result)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+            }
+
+            Spacer()
+
+            Button {
+                let pb = NSPasteboard.general
+                pb.clearContents()
+                pb.setString(calc.result, forType: .string)
+                ToastManager.shared.show(icon: "doc.on.doc", title: "Copied result", color: .teal)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.teal)
+                    .padding(6)
+                    .background(
+                        Circle()
+                            .fill(Color.teal.opacity(0.10))
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.teal.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.teal.opacity(0.2), lineWidth: 1)
+                )
+        )
     }
 
     private func startRecentsTimer() {
