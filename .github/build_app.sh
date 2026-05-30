@@ -61,8 +61,9 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <true/>
     <key>SUFeedURL</key>
     <string>https://williamcachamwri.github.io/Snything/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string>IBr4qCEIK2U2cuWXGbrWNKKq8uqsmRSQU39Nq10Gy4Y=</string>
+    <!-- SUPublicEDKey disabled for dev — EdDSA signature not available
+         To enable: generate key pair, add SUPublicEDKey here,
+         and sign DMG with `sign_update` before uploading -->
 </dict>
 </plist>
 EOF
