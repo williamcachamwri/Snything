@@ -138,9 +138,8 @@ struct ResultRowView: View {
             if let thumbnailImage {
                 Image(nsImage: thumbnailImage)
                     .resizable()
-                    .aspectRatio(contentMode: .fill)
+                    .aspectRatio(contentMode: .fit)
                     .frame(width: iconSize, height: iconSize)
-                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else if let iconImage {
                 Image(nsImage: iconImage)
