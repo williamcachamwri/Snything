@@ -907,6 +907,7 @@ struct ImagePreviewView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minHeight: 220)
 
             if let exif {
                 exifBar(data: exif)
@@ -1148,21 +1149,46 @@ struct ImagePreviewView: View {
         isLoading = true
         defer { isLoading = false }
 
-        // Reset zoom on new image
-        await MainActor.run {
-            scale = 1.0
-            lastScale = 1.0
-            offset = .zero
-            lastOffset = .zero
-        }
-
         let (image, exifData) = await FastImageLoader.load(url: url)
+
         await MainActor.run {
             self.nsImage = image
             withAnimation(.easeOut(duration: 0.2)) {
                 self.exif = exifData
             }
+
+            // Auto-scale wide/short images so they're readable in preview
+            // Preview panel is ~340pt wide, image area minHeight = 220pt
+            if let image = image {
+                let containerW: CGFloat = 340
+                let containerH: CGFloat = 220
+                let imgW = image.size.width
+                let imgH = image.size.height
+                guard imgW > 0, imgH > 0 else {
+                    self.resetZoomState()
+                    return
+                }
+                let imgAspect = imgW / imgH
+                let fittedH = min(containerH, containerW / imgAspect)
+                let targetMinH: CGFloat = 160
+                if fittedH < targetMinH {
+                    let newScale = min(targetMinH / fittedH, self.maxScale)
+                    self.scale = newScale
+                    self.lastScale = newScale
+                } else {
+                    self.resetZoomState()
+                }
+            } else {
+                self.resetZoomState()
+            }
         }
+    }
+
+    private func resetZoomState() {
+        scale = 1.0
+        lastScale = 1.0
+        offset = .zero
+        lastOffset = .zero
     }
 
     private func loadOCR() async {
