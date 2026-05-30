@@ -1,19 +1,21 @@
-name: Auto Release on Push
+name: Auto Release
 
 on:
+  # Trigger 1: Manual (GitHub Actions UI)
+  workflow_dispatch:
+
+  # Trigger 2: Commit message contains [release]
   push:
     branches:
       - main
-    paths-ignore:
-      - 'appcast.xml'
-      - '.github/workflows/**'
-      - 'README.md'
 
 jobs:
-  auto-bump:
+  should-release:
     runs-on: macos-latest
-    permissions:
-      contents: write
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      new_version: ${{ steps.bump.outputs.new_version }}
+      new_tag: ${{ steps.bump.outputs.new_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,15 +23,51 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Swift
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.0'
-
-      - name: Auto bump version
-        id: bump
+      - name: Check if should release
+        id: check
         run: |
-          # Fetch latest release
+          # Trigger 1: manual (workflow_dispatch) → always release
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger — releasing"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Trigger 2: check commit message for [release]
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if echo "$COMMIT_MSG" | grep -qiE '\[release\]|\[ship\]|\[deploy\]'; then
+            echo "Commit message trigger: [$COMMIT_MSG]"
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Trigger 3: check if latest release is old (build script version changed)
+          LATEST=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tag_name','v0.0.0').lstrip('v'))")
+          CURRENT=$(grep 'APP_VERSION=' .github/build_app.sh | sed 's/.*APP_VERSION="\${APP_VERSION:-\([^}]*\)}".*/\1/')
+
+          # Parse and compare
+          python3 << PYEOF
+          import os, sys
+
+          def parse(v):
+              parts = v.strip().split('.')
+              return tuple(int(p) for p in parts)
+
+          latest = parse("$LATEST")
+          current = parse("$CURRENT")
+
+          if current > latest:
+              print(f"build_app.sh version {'.'.join(map(str,current))} > latest release {'.'.join(map(str,latest))} → releasing")
+              print("should_run=true")
+          else:
+              print(f"build_app.sh version {'.'.join(map(str,current))} <= latest release {'.'.join(map(str,latest))} → skipping")
+              print("should_run=false")
+          PYEOF
+
+      - name: Bump version
+        id: bump
+        if: steps.check.outputs.should_run == 'true'
+        run: |
           LATEST=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python3 -c "import sys,json; t=json.load(sys.stdin).get('tag_name','v1.0.0'); print(t.lstrip('v'))")
           IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
           PATCH=$((PATCH + 1))
@@ -46,23 +84,33 @@ jobs:
           echo "new_tag=v$NEW" >> $GITHUB_OUTPUT
           echo "Bumped: $LATEST -> $NEW"
 
-      - name: Update build_app.sh version
-        run: |
-          NEW=${{ steps.bump.outputs.new_version }}
+          # Update build_app.sh
           sed -i.bak "s/APP_VERSION=\"\${APP_VERSION:-[^\"]*}\"/APP_VERSION=\"\${APP_VERSION:-$NEW}\"/" .github/build_app.sh
           rm -f .github/build_app.sh.bak
 
-      - name: Commit version bump
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .github/build_app.sh
-          git diff --cached --quiet || git commit -m "chore: auto-bump version to ${{ steps.bump.outputs.new_version }}"
+          git commit -m "chore: auto-bump version to $NEW [release]"
+          git push origin HEAD:main
 
-      - name: Create Tag
-        run: |
-          git tag ${{ steps.bump.outputs.new_tag }}
-          git push origin HEAD:main --tags
+  build-and-release:
+    needs: should-release
+    if: needs.should-release.outputs.should_run == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Swift
+        uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.0'
 
       - name: Resolve dependencies
         run: swift package resolve
@@ -70,7 +118,7 @@ jobs:
       - name: Build .app bundle
         run: bash .github/build_app.sh
         env:
-          APP_VERSION: ${{ steps.bump.outputs.new_version }}
+          APP_VERSION: ${{ needs.should-release.outputs.new_version }}
 
       - name: Create DMG
         run: |
@@ -91,14 +139,14 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.bump.outputs.new_tag }}
-          name: "version ${{ steps.bump.outputs.new_version }}"
+          tag_name: ${{ needs.should-release.outputs.new_tag }}
+          name: "version ${{ needs.should-release.outputs.new_version }}"
           files: Snything-Release.dmg
           generate_release_notes: true
 
       - name: Update appcast.xml
         run: |
-          VERSION=${{ steps.bump.outputs.new_version }}
+          VERSION=${{ needs.should-release.outputs.new_version }}
           PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
 
           RELEASE_NOTES=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases/latest" | python3 -c "import sys,json; b=json.load(sys.stdin).get('body',''); print(b[:2000] if b else '')")
@@ -140,4 +188,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add appcast.xml
-          git diff --cached --quiet || (git commit -m "chore: update appcast.xml for ${{ steps.bump.outputs.new_tag }}" && git push origin HEAD:main)
+          git diff --cached --quiet || (git commit -m "chore: update appcast.xml for ${{ needs.should-release.outputs.new_tag }} [release]" && git push origin HEAD:main)
