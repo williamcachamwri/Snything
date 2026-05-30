@@ -139,15 +139,19 @@ struct ResultRowView: View {
                 Image(nsImage: thumbnailImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .frame(width: iconSize, height: iconSize)
+                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else if let iconImage {
                 Image(nsImage: iconImage)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .frame(width: iconSize, height: iconSize)
             } else {
                 Image(systemName: iconNameForKind(result.kind))
                     .font(.system(size: 20, weight: .medium))
                     .foregroundColor(iconColorForKind(result.kind))
+                    .frame(width: iconSize, height: iconSize)
             }
         }
         .frame(width: iconSize, height: iconSize)
@@ -155,6 +159,7 @@ struct ResultRowView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.secondary.opacity(0.06))
         )
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 
     private func loadThumbnailOrIcon() async {
