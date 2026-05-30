@@ -124,8 +124,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             previewResult = nil
         }
 
-        // Trigger background OCR indexing on first open (scoped to user home only)
-        OCRIndexManager.shared.startBackgroundIndex(for: [NSHomeDirectory()])
+        // Trigger background OCR indexing on first open
+        OCRIndexManager.shared.startBackgroundIndex(for: SettingsManager.shared.ocrSearchScopes)
     }
 
     func showApplications() {

@@ -313,8 +313,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         searchWindowController = SearchWindowController()
         searchWindowController?.showWindow(nil)
 
-        // Start background OCR indexing on app launch (scoped to user home only)
-        OCRIndexManager.shared.startBackgroundIndex(for: [NSHomeDirectory()])
+        // Start background OCR indexing on app launch
+        OCRIndexManager.shared.startBackgroundIndex(for: SettingsManager.shared.ocrSearchScopes)
 
         GlobalHotkeyManager.shared.registerDefaultShortcut { [weak self] in
             self?.searchWindowController?.toggleVisibility()

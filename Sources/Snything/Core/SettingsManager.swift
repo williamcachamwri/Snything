@@ -62,6 +62,21 @@ final class SettingsManager: ObservableObject, @unchecked Sendable {
         set { scopesString = newValue.joined(separator: ",") }
     }
 
+    // OCR scopes: separate from file search scopes. Default is user home directory.
+    // Use "__HOME__" placeholder to resolve to NSHomeDirectory() at runtime.
+    @AppStorage("snything.ocrSearchScopes") private var ocrScopesString: String = "__HOME__"
+
+    var ocrSearchScopes: [String] {
+        get {
+            ocrScopesString.components(separatedBy: ",")
+                .filter { !$0.isEmpty }
+                .map { $0 == "__HOME__" ? NSHomeDirectory() : $0 }
+        }
+        set {
+            ocrScopesString = newValue.map { $0 == NSHomeDirectory() ? "__HOME__" : $0 }.joined(separator: ",")
+        }
+    }
+
     private init() {
         syncLaunchAtLogin()
     }

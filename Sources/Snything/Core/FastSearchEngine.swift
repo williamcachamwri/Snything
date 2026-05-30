@@ -331,9 +331,9 @@ final class FastSearchEngine: @unchecked Sendable {
         return results
     }
 
-    /// Find recently modified images in user home for on-demand OCR.
+    /// Find recently modified images for on-demand OCR.
     private func discoverRecentImagesForOCR(max: Int) async -> [String] {
-        let scopes = [NSHomeDirectory()]
+        let scopes = SettingsManager.shared.ocrSearchScopes
         let fm = FileManager.default
         let imageUTIs = [
             "public.png", "public.jpeg", "public.tiff", "public.gif",
