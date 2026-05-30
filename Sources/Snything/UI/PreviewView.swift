@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVKit
 
 struct PreviewView: View {
     let result: SearchResult
@@ -16,10 +17,13 @@ struct PreviewView: View {
             case .image:
                 ImagePreviewView(url: result.url)
                     .id(result.url)
+            case .video:
+                VideoPreviewView(url: result.url)
+                    .id(result.url)
             case .code, .document:
                 CodePreviewView(url: result.url)
                     .id(result.url)
-            case .file, .archive, .audio, .video:
+            case .file, .archive, .audio:
                 FileContextPreviewView(url: result.url)
                     .id(result.url)
             }
@@ -1222,6 +1226,420 @@ struct OCRTextPanel: View {
             }
         }
         .frame(minWidth: 400, minHeight: 300)
+    }
+}
+
+// MARK: - Video Preview View Model
+
+final class VideoPreviewModel: ObservableObject {
+    @Published var player: AVPlayer?
+    @Published var isPlaying = false
+    @Published var duration: Double = 0
+    @Published var currentTime: Double = 0
+    @Published var showControls = true
+    @Published var isDraggingScrubber = false
+    @Published var scale: CGFloat = 1.0
+    @Published var lastScale: CGFloat = 1.0
+    @Published var offset: CGSize = .zero
+    @Published var lastOffset: CGSize = .zero
+
+    let minScale: CGFloat = 1.0
+    let maxScale: CGFloat = 5.0
+
+    private var controlsTimer: Timer?
+    private var timeObserverToken: Any?
+    private var endObserverToken: NSObjectProtocol?
+    private let url: URL
+
+    init(url: URL) {
+        self.url = url
+        setupPlayer()
+    }
+
+    deinit {
+        teardownPlayer()
+    }
+
+    func setupPlayer() {
+        let asset = AVAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        let newPlayer = AVPlayer(playerItem: item)
+        newPlayer.actionAtItemEnd = .pause
+        self.player = newPlayer
+
+        Task { @MainActor in
+            let dur = try? await asset.load(.duration)
+            let seconds = dur?.seconds ?? 0
+            self.duration = seconds
+        }
+
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        timeObserverToken = newPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self = self, !self.isDraggingScrubber else { return }
+            self.currentTime = time.seconds
+            self.isPlaying = newPlayer.rate > 0 && newPlayer.error == nil
+        }
+
+        endObserverToken = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak newPlayer] _ in
+            newPlayer?.seek(to: .zero)
+            newPlayer?.pause()
+            self.isPlaying = false
+        }
+    }
+
+    func teardownPlayer() {
+        if let token = timeObserverToken, let player = player {
+            player.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        endObserverToken.map { NotificationCenter.default.removeObserver($0) }
+        endObserverToken = nil
+        player?.pause()
+        player = nil
+        controlsTimer?.invalidate()
+        controlsTimer = nil
+    }
+
+    func togglePlayback() {
+        guard let player = player else { return }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+        resetControlsTimer()
+    }
+
+    func seek(to ratio: Double) {
+        let time = CMTime(seconds: ratio * duration, preferredTimescale: 600)
+        player?.seek(to: time)
+    }
+
+    func toggleControls() {
+        withAnimation(.easeOut(duration: 0.2)) {
+            showControls.toggle()
+        }
+        resetControlsTimer()
+    }
+
+    func resetControlsTimer() {
+        controlsTimer?.invalidate()
+        controlsTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+            withAnimation(.easeOut(duration: 0.3)) {
+                self?.showControls = false
+            }
+        }
+    }
+
+    // Zoom
+    func zoomIn() {
+        let newScale = min(scale * 1.25, maxScale)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            scale = newScale
+            offset = .zero
+            lastScale = newScale
+            lastOffset = .zero
+        }
+    }
+
+    func zoomOut() {
+        let newScale = max(scale / 1.25, minScale)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+            scale = newScale
+            if newScale <= 1.0 { offset = .zero }
+            lastScale = newScale
+            lastOffset = offset
+        }
+    }
+
+    func resetZoom() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            scale = 1.0
+            offset = .zero
+            lastScale = 1.0
+            lastOffset = .zero
+        }
+    }
+
+    func snapZoomIfNeeded() {
+        if scale < 1.05 {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                scale = 1.0
+                offset = .zero
+                lastScale = 1.0
+                lastOffset = .zero
+            }
+        }
+    }
+
+    func clampOffset(_ offset: CGSize, in containerSize: CGSize) -> CGSize {
+        guard scale > 1.0 else { return .zero }
+        let maxOffsetX = containerSize.width * (scale - 1) / 2
+        let maxOffsetY = containerSize.height * (scale - 1) / 2
+        return CGSize(
+            width: min(max(offset.width, -maxOffsetX), maxOffsetX),
+            height: min(max(offset.height, -maxOffsetY), maxOffsetY)
+        )
+    }
+}
+
+// MARK: - Video Preview (with zoom, pan & controls)
+
+struct VideoPreviewView: View {
+    let url: URL
+    @StateObject private var model: VideoPreviewModel
+
+    init(url: URL) {
+        self.url = url
+        _model = StateObject(wrappedValue: VideoPreviewModel(url: url))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.15)
+
+            if let player = model.player {
+                videoContent(player)
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "film")
+                        .font(.system(size: 32))
+                        .foregroundColor(.secondary.opacity(0.4))
+                    Text("Loading video...")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            // Zoom controls overlay (bottom-right)
+            if model.scale > 1.0 || model.offset != .zero {
+                videoZoomControlBar
+                    .padding(12)
+                    .padding(.bottom, 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+
+            // Video controls overlay (bottom center)
+            if model.showControls {
+                videoControlBar
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .background(Color.secondary.opacity(0.04))
+        .cornerRadius(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+        )
+        .onTapGesture {
+            model.toggleControls()
+        }
+    }
+
+    // MARK: - Video Content with Zoom/Pan
+
+    private func videoContent(_ player: AVPlayer) -> some View {
+        GeometryReader { geo in
+            VideoPlayerView(player: player)
+                .scaleEffect(model.scale)
+                .offset(model.offset)
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: model.scale)
+                .animation(.spring(response: 0.28, dampingFraction: 0.82), value: model.offset)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        if model.scale > 1.1 {
+                            model.resetZoom()
+                        } else {
+                            model.scale = 2.0
+                            model.offset = .zero
+                            model.lastScale = 2.0
+                            model.lastOffset = .zero
+                        }
+                    }
+                }
+                .simultaneousGesture(
+                    MagnificationGesture()
+                        .onChanged { value in
+                            let newScale = min(max(model.lastScale * value, model.minScale), model.maxScale)
+                            model.scale = newScale
+                            model.offset = model.clampOffset(model.lastOffset, in: geo.size)
+                        }
+                        .onEnded { _ in
+                            model.lastScale = model.scale
+                            model.lastOffset = model.offset
+                            model.snapZoomIfNeeded()
+                        }
+                )
+                .simultaneousGesture(
+                    DragGesture()
+                        .onChanged { value in
+                            guard model.scale > 1.0 else { return }
+                            let newWidth = model.lastOffset.width + value.translation.width
+                            let newHeight = model.lastOffset.height + value.translation.height
+                            model.offset = model.clampOffset(CGSize(width: newWidth, height: newHeight), in: geo.size)
+                        }
+                        .onEnded { _ in
+                            model.lastOffset = model.offset
+                        }
+                )
+        }
+        .padding(12)
+        .cursor(.crosshair, when: model.scale > 1.0)
+        .cursor(.arrow, when: model.scale <= 1.0)
+    }
+
+    // MARK: - Video Controls
+
+    private var videoZoomControlBar: some View {
+        VStack(spacing: 6) {
+            Text("\(Int(model.scale * 100))%")
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(Color.black.opacity(0.6))
+                )
+
+            HStack(spacing: 4) {
+                videoZoomButton(icon: "minus") { model.zoomOut() }
+                videoZoomButton(icon: "arrow.counterclockwise") { model.resetZoom() }
+                videoZoomButton(icon: "plus") { model.zoomIn() }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color.black.opacity(0.5))
+            )
+        }
+    }
+
+    private var videoControlBar: some View {
+        VStack(spacing: 6) {
+            // Scrubber
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(height: 4)
+
+                    if model.duration > 0 {
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .frame(width: max(0, CGFloat(model.currentTime / model.duration) * geo.size.width), height: 4)
+                    }
+
+                    if model.duration > 0 {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 12, height: 12)
+                            .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                            .position(
+                                x: max(6, min(geo.size.width - 6, CGFloat(model.currentTime / model.duration) * geo.size.width)),
+                                y: geo.size.height / 2
+                            )
+                            .gesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        model.isDraggingScrubber = true
+                                        let ratio = min(max(value.location.x / geo.size.width, 0), 1)
+                                        model.currentTime = Double(ratio) * model.duration
+                                    }
+                                    .onEnded { value in
+                                        model.isDraggingScrubber = false
+                                        let ratio = min(max(value.location.x / geo.size.width, 0), 1)
+                                        model.seek(to: Double(ratio))
+                                    }
+                            )
+                    }
+                }
+            }
+            .frame(height: 16)
+
+            HStack(spacing: 12) {
+                Button {
+                    model.togglePlayback()
+                } label: {
+                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+
+                HStack(spacing: 4) {
+                    Text(formatTime(model.currentTime))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Text("/")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text(formatTime(model.duration))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                }
+                .foregroundColor(.white.opacity(0.9))
+
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.black.opacity(0.45))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+                )
+        )
+    }
+
+    private func videoZoomButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(Color.white.opacity(0.12)))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func formatTime(_ seconds: Double) -> String {
+        let total = Int(max(0, seconds))
+        let mins = total / 60
+        let secs = total % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+}
+
+// MARK: - NSViewRepresentable AVPlayer
+
+struct VideoPlayerView: NSViewRepresentable {
+    let player: AVPlayer
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let view = AVPlayerView()
+        view.player = player
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        nsView.player = player
     }
 }
 
