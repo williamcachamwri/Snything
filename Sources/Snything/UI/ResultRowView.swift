@@ -4,6 +4,7 @@ struct ResultRowView: View {
     let result: SearchResult
     let isSelected: Bool
     var namespace: Namespace.ID
+    let isDeleting: Bool
 
     @State private var iconImage: NSImage?
     @State private var thumbnailImage: NSImage?
@@ -18,21 +19,21 @@ struct ResultRowView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(result.displayName)
                     .font(.system(size: 14, weight: isSelected ? .semibold : .medium, design: .rounded))
-                    .foregroundColor(.primary)
+                    .foregroundColor(isDeleting ? .red.opacity(0.8) : .primary)
                     .lineLimit(1)
 
                 let subtitleText = result.subtitle.isEmpty ? result.parentPath : result.subtitle
                 Text(subtitleText)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .foregroundColor(isDeleting ? .red.opacity(0.5) : .secondary.opacity(0.8))
                     .lineLimit(1)
             }
 
             Spacer()
 
-            if isSelected {
+            if isSelected && !isDeleting {
                 HStack(spacing: 6) {
-                    ActionBadge(icon: "arrow.up.doc", label: "Drag")
+                    ActionBadge(icon: "delete.left", label: "Delete", color: .red)
                     ActionBadge(icon: "return", label: "Open")
                     ActionBadge(icon: "space", label: "Preview")
                 }
@@ -43,15 +44,15 @@ struct ResultRowView: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                .fill(backgroundFill)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .stroke(
                             isSelected
                                 ? AnyShapeStyle(LinearGradient(
                                     gradient: Gradient(colors: [
-                                        Color.accentColor.opacity(0.45),
-                                        Color.accentColor.opacity(0.15)
+                                        isDeleting ? Color.red.opacity(0.6) : Color.accentColor.opacity(0.45),
+                                        isDeleting ? Color.red.opacity(0.2) : Color.accentColor.opacity(0.15)
                                     ]),
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
@@ -61,7 +62,7 @@ struct ResultRowView: View {
                         )
                 )
                 .shadow(
-                    color: isSelected ? Color.accentColor.opacity(0.15) : Color.clear,
+                    color: isDeleting ? Color.red.opacity(0.25) : (isSelected ? Color.accentColor.opacity(0.15) : Color.clear),
                     radius: isSelected ? 8 : 0,
                     x: 0,
                     y: isSelected ? 2 : 0
@@ -74,14 +75,24 @@ struct ResultRowView: View {
         .onAppear {
             loadIcon()
         }
-        .scaleEffect(isHovered ? 1.005 : 1.0)
+        .offset(x: isDeleting ? 60 : 0)
+        .scaleEffect(isDeleting ? 0.92 : (isHovered ? 1.005 : 1.0))
+        .opacity(isDeleting ? 0.3 : 1.0)
+        .rotationEffect(.degrees(isDeleting ? 2 : 0))
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isDeleting)
         .animation(.spring(response: 0.2, dampingFraction: 0.8), value: isHovered)
         .onHover { hover in
-            isHovered = hover
+            if !isDeleting { isHovered = hover }
         }
         .onDrag {
             NSItemProvider(contentsOf: result.url) ?? NSItemProvider()
         }
+    }
+
+    private var backgroundFill: Color {
+        if isDeleting { return Color.red.opacity(0.12) }
+        if isSelected { return Color.accentColor.opacity(0.14) }
+        return Color.clear
     }
 
     @ViewBuilder
@@ -165,6 +176,7 @@ struct ResultRowView: View {
 struct ActionBadge: View {
     let icon: String
     let label: String
+    var color: Color = .secondary
 
     var body: some View {
         HStack(spacing: 3) {
@@ -173,15 +185,15 @@ struct ActionBadge: View {
             Text(label)
                 .font(.system(size: 9, weight: .bold, design: .rounded))
         }
-        .foregroundColor(.secondary.opacity(0.8))
+        .foregroundColor(color.opacity(0.85))
         .padding(.horizontal, 6)
         .padding(.vertical, 3)
         .background(
             RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Color.secondary.opacity(0.10))
+                .fill(color.opacity(0.10))
                 .overlay(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                        .stroke(color.opacity(0.20), lineWidth: 0.5)
                 )
         )
     }

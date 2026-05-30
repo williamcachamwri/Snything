@@ -268,9 +268,10 @@ struct SearchView: View {
             case 51: // delete / backspace
                 if coordinator.showingClipboard {
                     coordinator.deleteSelectedClipboardItem()
-                    return true
+                } else if !coordinator.results.isEmpty {
+                    coordinator.deleteSelectedFile()
                 }
-                return false
+                return true
             case 53: // escape
                 if coordinator.showPreview {
                     withAnimation(.easeOut(duration: 0.15)) {

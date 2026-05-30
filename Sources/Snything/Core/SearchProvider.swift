@@ -31,6 +31,8 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
     @Published var clipboardFocusedIndex: Int = 0
     @Published var clipboardPreviewItem: ClipboardItem? = nil
 
+    @Published var deletingResultID: String? = nil
+
     private let engine = FastSearchEngine.shared
     private let clipboard = ClipboardManager.shared
     private var activeTask: Task<Void, Never>?
@@ -270,6 +272,33 @@ final class SearchCoordinator: ObservableObject, @unchecked Sendable {
             selectedClipboardIndex = max(0, clipboardItems.count - 1)
         }
         clipboardFocusedIndex = selectedClipboardIndex
+    }
+
+    func deleteSelectedFile() {
+        guard !showingClipboard, results.indices.contains(selectedIndex) else { return }
+        let result = results[selectedIndex]
+
+        deletingResultID = result.id
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                self.deletingResultID = nil
+                self.results.removeAll { $0.id == result.id }
+                self.selectedIndex = min(self.selectedIndex, max(0, self.results.count - 1))
+                self.keyboardFocusedIndex = self.selectedIndex
+                if self.previewResult?.id == result.id {
+                    self.showPreview = false
+                    self.previewResult = nil
+                }
+            }
+
+            // Actually move to trash
+            do {
+                try FileManager.default.trashItem(at: result.url, resultingItemURL: nil)
+            } catch {
+                print("[SearchCoordinator] failed to trash \(result.path): \(error)")
+            }
+        }
     }
 
     func togglePreview() {
