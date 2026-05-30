@@ -5,15 +5,33 @@
     <link>https://github.com/williamcachamwri/Snything/releases</link>
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
+
+    <item>
+      <title>Version 1.0.88</title>
+      <description><![CDATA[
+        <h2>What's New in 1.0.88</h2>
+        <ul>
+          <li>Preview default 100% zoom + thumbnail aspect fit in rounded rect</li>
+          <li>Image preview too small for wide/short images — fixed</li>
+          <li>Image thumbnail overflow in search results — fixed</li>
+          <li>RAW preview loading + video thumbnails optimized</li>
+          <li>Video preview with zoom/pan + play controls + trackpad pinch</li>
+        </ul>
+      ]]></description>
+      <pubDate>Fri, 30 May 2026 00:00:00 +0000</pubDate>
+      <enclosure url="https://github.com/williamcachamwri/Snything/releases/download/v1.0.88/Snything-Release.dmg" sparkle:version="88" sparkle:shortVersionString="1.0.88" length="0" type="application/octet-stream" sparkle:edSignature=""/>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    </item>
+
     <item>
       <title>Version 1.0.0</title>
       <description><![CDATA[
-        <h2>What's New</h2>
+        <h2>Initial Release</h2>
         <ul>
-          <li>Initial release</li>
+          <li>First public release of Snything</li>
         </ul>
       ]]></description>
-      <pubDate>Sun, 30 May 2026 00:00:00 +0000</pubDate>
+      <pubDate>Sun, 01 Jan 2026 00:00:00 +0000</pubDate>
       <enclosure url="https://github.com/williamcachamwri/Snything/releases/download/v1.0.0/Snything.dmg" sparkle:version="1" sparkle:shortVersionString="1.0.0" length="0" type="application/octet-stream" sparkle:edSignature=""/>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
     </item>
