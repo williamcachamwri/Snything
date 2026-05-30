@@ -10,6 +10,7 @@ struct ResultRowView: View {
     @State private var iconImage: NSImage?
     @State private var thumbnailImage: NSImage?
     @State private var isHovered = false
+    @State private var tagColors: [Color] = []
 
     private let iconSize: CGFloat = 36
 
@@ -23,11 +24,20 @@ struct ResultRowView: View {
                     .foregroundColor(isDeleting ? .red.opacity(0.8) : .primary)
                     .lineLimit(1)
 
-                let subtitleText = result.subtitle.isEmpty ? result.parentPath : result.subtitle
-                Text(subtitleText)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundColor(isDeleting ? .red.opacity(0.5) : .secondary.opacity(0.8))
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    let subtitleText = result.subtitle.isEmpty ? result.parentPath : result.subtitle
+                    Text(subtitleText)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundColor(isDeleting ? .red.opacity(0.5) : .secondary.opacity(0.8))
+                        .lineLimit(1)
+
+                    // Finder tag color dots
+                    ForEach(Array(tagColors.enumerated()), id: \.offset) { _, color in
+                        Circle()
+                            .fill(color)
+                            .frame(width: 6, height: 6)
+                    }
+                }
             }
 
             Spacer()
@@ -54,6 +64,10 @@ struct ResultRowView: View {
                                     )
                             )
                             .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    } else {
+                        // Icon-only Tab badge when preview is open
+                        ActionBadge(icon: "arrow.turn.right.down", label: "Tab", color: .accentColor, showLabel: false)
+                            .transition(.scale(scale: 0.8).combined(with: .opacity))
                     }
                 }
                 .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -61,6 +75,9 @@ struct ResultRowView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+        .task(id: result.id) {
+            await loadTags()
+        }
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(backgroundFill)
@@ -160,6 +177,44 @@ struct ResultRowView: View {
             DispatchQueue.main.async {
                 self.thumbnailImage = resized
             }
+        }
+    }
+
+    @MainActor
+    private func loadTags() async {
+        guard let tags = try? result.url.resourceValues(forKeys: [.tagNamesKey]).tagNames else { return }
+        tagColors = tags.compactMap { tagColor(from: $0) }
+    }
+
+    private func tagColor(from tag: String) -> Color? {
+        // macOS Finder tags: "TagName\nColorIndex" or just "TagName"
+        // Color index: 0=Gray, 1=Green, 2=Purple, 3=Blue, 4=Yellow, 5=Red, 6=Orange
+        if let idx = tag.lastIndex(of: "\n") {
+            let numStr = String(tag.suffix(from: tag.index(after: idx)))
+            if let index = Int(numStr) {
+                switch index {
+                case 0: return .gray
+                case 1: return .green
+                case 2: return .purple
+                case 3: return .blue
+                case 4: return .yellow
+                case 5: return .red
+                case 6: return .orange
+                default: break
+                }
+            }
+        }
+        // Fallback to name matching
+        let name = tag.components(separatedBy: "\n").first?.lowercased() ?? ""
+        switch name {
+        case "red": return .red
+        case "orange": return .orange
+        case "yellow": return .yellow
+        case "green": return .green
+        case "blue": return .blue
+        case "purple": return .purple
+        case "gray", "grey": return .gray
+        default: return nil
         }
     }
 
