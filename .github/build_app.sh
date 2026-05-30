@@ -61,7 +61,8 @@ cat > "${APP_BUNDLE}/Contents/Info.plist" <<EOF
     <true/>
     <key>SUFeedURL</key>
     <string>https://raw.githubusercontent.com/williamcachamwri/Snything/main/appcast.xml</string>
-    <!-- SUPublicEDKey removed for dev builds -->
+    <key>SUPublicEDKey</key>
+    <string>IBr4qCEIK2U2cuWXGbrWNKKq8uqsmRSQU39Nq10Gy4Y=</string>
 </dict>
 </plist>
 EOF
