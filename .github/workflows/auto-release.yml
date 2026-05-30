@@ -46,8 +46,8 @@ jobs:
           CURRENT=$(grep 'APP_VERSION=' .github/build_app.sh | sed 's/.*APP_VERSION="\${APP_VERSION:-\([^}]*\)}".*/\1/')
 
           # Parse and compare
-          python3 << PYEOF >> $GITHUB_OUTPUT
-          import os, sys
+          python3 << PYEOF | tee /tmp/version_check.log | grep "^should_run=" >> $GITHUB_OUTPUT
+          import sys
 
           def parse(v):
               parts = v.strip().split('.')
@@ -63,6 +63,7 @@ jobs:
               print(f"build_app.sh version {'.'.join(map(str,current))} <= latest release {'.'.join(map(str,latest))} → skipping")
               print("should_run=false")
           PYEOF
+          cat /tmp/version_check.log
 
       - name: Bump version
         id: bump
